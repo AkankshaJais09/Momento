@@ -8,17 +8,27 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from apps.accounts.models import User
+from apps.events.models import Event, Membership
+from apps.photos.models import Photo, Like
 
 
 @pytest.fixture(autouse=True)
-def setup_test_db():
+def setup_test_db(tmp_path):
     """Isolate each test in a mock MongoEngine database and reset cache."""
     mongoengine.disconnect()
     mongoengine.connect("test_accounts_db", host="localhost", mongo_client_class=mongomock.MongoClient)
     User.drop_collection()
+    Event.drop_collection()
+    Membership.drop_collection()
+    Photo.drop_collection()
+    Like.drop_collection()
     cache.clear()
     yield
     User.drop_collection()
+    Event.drop_collection()
+    Membership.drop_collection()
+    Photo.drop_collection()
+    Like.drop_collection()
     cache.clear()
     mongoengine.disconnect()
 
@@ -319,3 +329,41 @@ class TestUserProfile:
         response = client.patch("/api/auth/me", {"display_name": "Updated Name"}, format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "token_not_valid" in str(response.data) or "expired" in str(response.data).lower()
+
+
+class TestDeleteAccount:
+    def test_delete_account_success_removes_user_and_photos(self, auth_client):
+        client, user, _ = auth_client
+
+        # Create an event owned by user
+        event = Event(name="My Event", owner=user).save()
+        Membership(user=user, event=event, role=Membership.ROLE_OWNER).save()
+
+        # Create photo in user's event
+        from datetime import datetime
+        p1 = Photo(
+            event=event,
+            uploader=user,
+            original_file="p1.jpg",
+            thumbnail="p1_t.jpg",
+            medium_preview="p1_m.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime.utcnow(),
+            size_bytes=100,
+        ).save()
+
+        # Delete account
+        res = client.delete("/api/auth/me")
+        assert res.status_code == status.HTTP_204_NO_CONTENT
+
+        # Verify user is deleted
+        assert User.objects(id=user.id).first() is None
+        # Verify event and photos are deleted
+        assert Event.objects(id=event.id).first() is None
+        assert Photo.objects(id=p1.id).first() is None
+        assert Membership.objects(user=user).count() == 0
+
+    def test_delete_account_unauthenticated(self, client):
+        res = client.delete("/api/auth/me")
+        assert res.status_code == status.HTTP_401_UNAUTHORIZED
