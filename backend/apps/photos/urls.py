@@ -1,7 +1,17 @@
-from django.urls import path
-from .views import PhotoListUploadView, PhotoDetailView
+# URLs for photos, likes, and photo download endpoints.
+# Supports listing, uploading, deleting photos, liking, and downloading original files.
+
+from django.urls import re_path
+from apps.photos.views import (
+    PhotoListUploadView,
+    PhotoDetailView,
+    PhotoLikeView,
+    PhotoDownloadView,
+)
 
 urlpatterns = [
-    path("<str:event_id>/", PhotoListUploadView.as_view(), name="photo-list-upload"),
-    path("<str:event_id>/<str:pk>/", PhotoDetailView.as_view(), name="photo-detail"),
+    re_path(r"^$", PhotoListUploadView.as_view(), name="photo-list-upload"),
+    re_path(r"^(?P<pk>[^/]+)/download/?$", PhotoDownloadView.as_view(), name="photo-download"),
+    re_path(r"^(?P<pk>[^/]+)/like/?$", PhotoLikeView.as_view(), name="photo-like"),
+    re_path(r"^(?P<pk>[^/]+)/?$", PhotoDetailView.as_view(), name="photo-detail"),
 ]

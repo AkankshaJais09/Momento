@@ -52,3 +52,13 @@ We do not launch until all of the following are true:
 - [ ] Real favicon set added.
 - [ ] Any "made with AI" tag, badge, generator meta tag or framework default branding removed.
 - [ ] Privacy Policy page and Terms and Conditions page exist and are linked in the footer.
+
+---
+
+## COLLEGE PROJECT RULES (these override anything more complex)
+
+- This is a college project. The code must be simple enough for a beginner to read and explain.
+- Use plain Django and plain React. Use useState, useEffect and React Context only. No Redux, no Celery, no Docker, no microservices, no custom abstractions.
+- Keep functions short. Add a short plain English comment above each model, view and component saying what it does and why.
+- Prefer fewer files and fewer dependencies. Tell me before adding any new package.
+- When a feature has a simple version and a clever version, always build the simple version.
