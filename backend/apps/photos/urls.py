@@ -7,9 +7,11 @@ from apps.photos.views import (
     PhotoDetailView,
     PhotoLikeView,
     PhotoDownloadView,
+    PhotoBatchDeleteView,
 )
 
 urlpatterns = [
+    re_path(r"^batch-delete/?$", PhotoBatchDeleteView.as_view(), name="photo-batch-delete"),
     re_path(r"^$", PhotoListUploadView.as_view(), name="photo-list-upload"),
     re_path(r"^(?P<pk>[^/]+)/download/?$", PhotoDownloadView.as_view(), name="photo-download"),
     re_path(r"^(?P<pk>[^/]+)/like/?$", PhotoLikeView.as_view(), name="photo-like"),

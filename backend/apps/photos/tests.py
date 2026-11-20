@@ -772,3 +772,43 @@ class TestZipDownload:
             format="json",
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class TestPhotoBatchDelete:
+    def test_owner_batch_delete_photos(self):
+        owner = create_user("owner_batch@example.com")
+        event = Event(name="Batch Event", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+
+        p1 = Photo(
+            event=event,
+            uploader=owner,
+            original_file="b1.jpg",
+            thumbnail="b1_t.jpg",
+            medium_preview="b1_m.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime.utcnow(),
+            size_bytes=100,
+        ).save()
+        p2 = Photo(
+            event=event,
+            uploader=owner,
+            original_file="b2.jpg",
+            thumbnail="b2_t.jpg",
+            medium_preview="b2_m.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime.utcnow(),
+            size_bytes=100,
+        ).save()
+
+        client = auth_client_for(owner)
+        res = client.post(
+            f"/api/events/{event.id}/photos/batch-delete/",
+            {"photo_ids": [str(p1.id), str(p2.id)]},
+            format="json",
+        )
+        assert res.status_code == status.HTTP_200_OK
+        assert res.data["deleted_count"] == 2
+        assert Photo.objects(event=event).count() == 0

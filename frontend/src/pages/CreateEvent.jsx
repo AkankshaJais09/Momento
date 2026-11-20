@@ -5,10 +5,12 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AlertCircle, Plus, ArrowLeft, Loader2 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 export default function CreateEvent({ onCreated, onCancel }) {
   useDocumentMeta('Create an Event', 'Start a new shared photo album for your trip or gathering.');
+  const { showToast } = useToast();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -43,6 +45,7 @@ export default function CreateEvent({ onCreated, onCancel }) {
       };
 
       const newEvent = await api.post('/events/', payload);
+      showToast('Event created successfully!', 'success');
       if (onCreated) {
         onCreated(newEvent);
       } else {
