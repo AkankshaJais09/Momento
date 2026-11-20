@@ -62,9 +62,16 @@ export function AuthProvider({ children }) {
 
   // Permanently delete the user account and associated photos
   const deleteAccount = async () => {
-    await api.delete('/auth/me');
+    await api.delete('/auth/me/');
     clearStoredTokens();
     setUser(null);
+  };
+
+  // Update the logged-in user's display name
+  const updateProfile = async (displayName) => {
+    const data = await api.patch('/auth/me/', { display_name: displayName });
+    setUser(data);
+    return data;
   };
 
   const value = {
@@ -75,6 +82,7 @@ export function AuthProvider({ children }) {
     register,
     logout,
     deleteAccount,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

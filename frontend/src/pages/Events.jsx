@@ -1,7 +1,7 @@
-// Events management page with desktop sidebar and mobile top bar.
-// Displays the list of events, dates, member counts, copy invite link button, and create event form.
+// Events management page with desktop sidebar, mobile top bar, and interactive members management.
+// Displays the list of events, stats, members drawer, invite link generation, and photo gallery.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -14,13 +14,27 @@ import {
   FolderPlus,
   KeyRound,
   Shield,
+  Search,
+  RefreshCw,
+  Trash2,
+  LogOut,
+  X,
+  UserCheck,
+  UserMinus,
+  Sparkles,
 } from 'lucide-react';
-import { api } from '../api';
+import {
+  api,
+  getEventMembers,
+  removeEventMember,
+  getEventStats,
+} from '../api';
 import CreateEvent from './CreateEvent';
 import PhotoGallery from '../components/PhotoGallery';
+import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-// Helper to format date ranges cleanly in plain English
 function formatDateRange(startDate, endDate) {
   if (!startDate && !endDate) {
     return null;
@@ -41,11 +55,21 @@ function formatDateRange(startDate, endDate) {
   return `Ending ${new Date(endDate).toLocaleDateString(undefined, options)}`;
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 export default function Events() {
   const { id: routeEventId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { showToast } = useToast();
 
-  useDocumentMeta('My Events', 'Manage and view your shared photo events.');
+  useDocumentMeta('My Events - PhotoDrop', 'Manage and view your shared photo events.');
 
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(routeEventId || null);
@@ -53,10 +77,29 @@ export default function Events() {
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [copiedCode, setCopiedCode] = useState(null);
-  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [eventSearch, setEventSearch] = useState('');
+
+  // Join modal state
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+
+  // Members modal state
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [removingUserId, setRemovingUserId] = useState(null);
+
+  // Event stats state
+  const [eventStats, setEventStats] = useState(null);
+
+  // Delete & Leave modals
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [isLeavingEvent, setIsLeavingEvent] = useState(false);
+  const [isRegeneratingCode, setIsRegeneratingCode] = useState(false);
 
   // Fetch list of events the logged-in user belongs to
   useEffect(() => {
@@ -71,7 +114,6 @@ export default function Events() {
           const list = Array.isArray(data) ? data : [];
           setEvents(list);
 
-          // If a route param was provided, select it; otherwise select the first event
           if (routeEventId) {
             setSelectedEventId(routeEventId);
           } else if (list.length > 0) {
@@ -100,15 +142,149 @@ export default function Events() {
     (e) => String(e.id || e.pk) === String(selectedEventId)
   );
 
-  // Copy full invite link to clipboard without QR codes
+  const isOwner = selectedEvent?.my_role === 'owner';
+
+  // Load event stats when selected event changes
+  useEffect(() => {
+    if (!selectedEvent) {
+      setEventStats(null);
+      return;
+    }
+    const currentId = selectedEvent.id || selectedEvent.pk;
+    async function fetchStats() {
+      try {
+        const stats = await getEventStats(currentId);
+        setEventStats(stats);
+      } catch {
+        setEventStats(null);
+      }
+    }
+    fetchStats();
+  }, [selectedEvent]);
+
+  // Load members for modal
+  const openMembersModal = async () => {
+    if (!selectedEvent) return;
+    setShowMembersModal(true);
+    setLoadingMembers(true);
+    const currentId = selectedEvent.id || selectedEvent.pk;
+    try {
+      const data = await getEventMembers(currentId);
+      setMembers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      showToast(err.message || 'Failed to load event members.', 'danger');
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  // Remove a member (owner only)
+  const handleRemoveMember = async (targetUserId, targetName) => {
+    if (!selectedEvent) return;
+    const currentId = selectedEvent.id || selectedEvent.pk;
+    setRemovingUserId(targetUserId);
+    try {
+      await removeEventMember(currentId, targetUserId);
+      setMembers((prev) => prev.filter((m) => String(m.user_id) !== String(targetUserId)));
+      // Update local member count
+      setEvents((prev) =>
+        prev.map((e) =>
+          String(e.id || e.pk) === String(currentId)
+            ? { ...e, member_count: Math.max(1, (e.member_count || 1) - 1) }
+            : e
+        )
+      );
+      showToast(`Removed ${targetName || 'member'} from event.`, 'info');
+    } catch (err) {
+      showToast(err.message || 'Could not remove member.', 'danger');
+    } finally {
+      setRemovingUserId(null);
+    }
+  };
+
+  // Regenerate invite code (owner only)
+  const handleRegenerateInviteCode = async () => {
+    if (!selectedEvent) return;
+    const currentId = selectedEvent.id || selectedEvent.pk;
+    setIsRegeneratingCode(true);
+    try {
+      const res = await api.post(`/events/${currentId}/regenerate-invite-code/`);
+      const updatedCode = res.invite_code;
+      setEvents((prev) =>
+        prev.map((e) =>
+          String(e.id || e.pk) === String(currentId) ? { ...e, invite_code: updatedCode } : e
+        )
+      );
+      showToast('New invite code generated. Old links are now expired.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to regenerate invite code.', 'danger');
+    } finally {
+      setIsRegeneratingCode(false);
+    }
+  };
+
+  // Delete event (owner only)
+  const handleDeleteEvent = async () => {
+    if (!selectedEvent) return;
+    const currentId = selectedEvent.id || selectedEvent.pk;
+    setIsDeletingEvent(true);
+    try {
+      await api.delete(`/events/${currentId}/`);
+      setShowDeleteModal(false);
+      const remaining = events.filter((e) => String(e.id || e.pk) !== String(currentId));
+      setEvents(remaining);
+      showToast('Event deleted successfully.', 'success');
+      if (remaining.length > 0) {
+        const nextId = remaining[0].id || remaining[0].pk;
+        setSelectedEventId(nextId);
+        navigate(`/events/${nextId}`);
+      } else {
+        setSelectedEventId(null);
+        navigate('/events');
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to delete event.', 'danger');
+    } finally {
+      setIsDeletingEvent(false);
+    }
+  };
+
+  // Leave event (member only)
+  const handleLeaveEvent = async () => {
+    if (!selectedEvent) return;
+    const currentId = selectedEvent.id || selectedEvent.pk;
+    setIsLeavingEvent(true);
+    try {
+      await api.post(`/events/${currentId}/leave/`);
+      setShowLeaveModal(false);
+      const remaining = events.filter((e) => String(e.id || e.pk) !== String(currentId));
+      setEvents(remaining);
+      showToast('You left the event.', 'info');
+      if (remaining.length > 0) {
+        const nextId = remaining[0].id || remaining[0].pk;
+        setSelectedEventId(nextId);
+        navigate(`/events/${nextId}`);
+      } else {
+        setSelectedEventId(null);
+        navigate('/events');
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to leave event.', 'danger');
+    } finally {
+      setIsLeavingEvent(false);
+    }
+  };
+
+  // Copy full invite link to clipboard
   const handleCopyInviteLink = (inviteCode) => {
     if (!inviteCode) return;
     const inviteUrl = `${window.location.origin}/join/${inviteCode}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopiedCode(inviteCode);
+    showToast('Invitation link copied to clipboard.', 'success');
     setTimeout(() => {
       setCopiedCode(null);
-    }, 2000);
+    }, 2500);
   };
 
   // Callback when a new event is created
@@ -117,6 +293,7 @@ export default function Events() {
     const newId = newEvent.id || newEvent.pk;
     setSelectedEventId(newId);
     setIsCreating(false);
+    showToast('Event album created successfully.', 'success');
     navigate(`/events/${newId}`);
   };
 
@@ -143,6 +320,7 @@ export default function Events() {
       const targetId = response.event?.id || response.event?.pk;
       if (targetId) {
         setSelectedEventId(targetId);
+        showToast('Joined event successfully.', 'success');
         navigate(`/events/${targetId}`);
       }
     } catch (err) {
@@ -152,6 +330,13 @@ export default function Events() {
     }
   };
 
+  // Filtered events in sidebar
+  const filteredEvents = useMemo(() => {
+    if (!eventSearch.trim()) return events;
+    const q = eventSearch.toLowerCase().trim();
+    return events.filter((e) => (e.name || '').toLowerCase().includes(q));
+  }, [events, eventSearch]);
+
   return (
     <div
       style={{
@@ -160,7 +345,7 @@ export default function Events() {
         minHeight: 'calc(100vh - 120px)',
       }}
     >
-      {/* Mobile Top Bar (visible on narrow screens < 768px) */}
+      {/* Mobile Top Bar */}
       <div
         className="mobile-events-bar"
         style={{
@@ -179,7 +364,7 @@ export default function Events() {
           }}
         >
           <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text)' }}>
-            Events ({events.length})
+            My Events ({events.length})
           </span>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button
@@ -188,8 +373,8 @@ export default function Events() {
               className="btn btn-secondary"
               style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}
             >
-              <KeyRound size={14} />
-              <span>Join code</span>
+              <KeyRound size={13} />
+              <span>Join</span>
             </button>
             <button
               type="button"
@@ -200,7 +385,7 @@ export default function Events() {
               className="btn btn-primary"
               style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}
             >
-              <Plus size={14} />
+              <Plus size={13} />
               <span>Create</span>
             </button>
           </div>
@@ -256,7 +441,7 @@ export default function Events() {
           flex: 1,
         }}
       >
-        {/* Desktop Left Sidebar (hidden on mobile via CSS media query) */}
+        {/* Desktop Left Sidebar */}
         <aside
           className="desktop-events-sidebar"
           style={{
@@ -268,6 +453,7 @@ export default function Events() {
             flexDirection: 'column',
           }}
         >
+          {/* Sidebar Header */}
           <div
             style={{
               padding: 'var(--space-4)',
@@ -294,7 +480,7 @@ export default function Events() {
                 onClick={() => setShowJoinModal(true)}
                 className="btn btn-secondary"
                 style={{ padding: '0.3125rem 0.625rem', fontSize: '0.75rem' }}
-                title="Join an event using an invite code"
+                title="Join an event with an invite code"
               >
                 <KeyRound size={13} />
                 <span>Join</span>
@@ -314,6 +500,24 @@ export default function Events() {
             </div>
           </div>
 
+          {/* Quick Search for Events */}
+          {events.length > 3 && (
+            <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-border)' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                <input
+                  type="text"
+                  value={eventSearch}
+                  onChange={(e) => setEventSearch(e.target.value)}
+                  placeholder="Filter events..."
+                  className="input"
+                  style={{ paddingLeft: '1.75rem', fontSize: '0.75rem', height: '30px' }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Events List */}
           <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-2)' }}>
             {loading && (
               <div
@@ -327,7 +531,7 @@ export default function Events() {
                   fontSize: '0.8125rem',
                 }}
               >
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" color="var(--color-accent)" />
                 <span>Loading events...</span>
               </div>
             )}
@@ -355,7 +559,7 @@ export default function Events() {
             )}
 
             {!loading &&
-              events.map((evt) => {
+              filteredEvents.map((evt) => {
                 const evtId = evt.id || evt.pk;
                 const isSelected = !isCreating && String(selectedEventId) === String(evtId);
                 const dates = formatDateRange(evt.start_date, evt.end_date);
@@ -372,14 +576,14 @@ export default function Events() {
                     style={{
                       width: '100%',
                       textAlign: 'left',
-                      padding: 'var(--space-3) var(--space-3)',
+                      padding: 'var(--space-3)',
                       marginBottom: 'var(--space-1)',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid',
                       borderColor: isSelected ? 'var(--color-accent)' : 'transparent',
                       backgroundColor: isSelected ? 'var(--color-bg)' : 'transparent',
                       cursor: 'pointer',
-                      transition: 'background-color 100ms ease, border-color 100ms ease',
+                      transition: 'background-color var(--transition-fast), border-color var(--transition-fast)',
                       display: 'block',
                     }}
                   >
@@ -410,10 +614,10 @@ export default function Events() {
                           padding: '0.125rem 0.375rem',
                           borderRadius: 'var(--radius-sm)',
                           backgroundColor:
-                            evt.my_role === 'owner' ? 'rgba(25, 113, 194, 0.1)' : 'var(--color-bg-muted)',
+                            evt.my_role === 'owner' ? 'rgba(2, 132, 199, 0.15)' : 'var(--color-bg-muted)',
                           color:
                             evt.my_role === 'owner' ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                          fontWeight: 500,
+                          fontWeight: 600,
                           flexShrink: 0,
                           textTransform: 'capitalize',
                         }}
@@ -438,7 +642,7 @@ export default function Events() {
                       {dates && (
                         <span
                           style={{
-                            maxWidth: '130px',
+                            maxWidth: '120px',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -472,7 +676,7 @@ export default function Events() {
                 padding: 'var(--space-4)',
                 marginBottom: 'var(--space-6)',
                 borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'rgba(201, 42, 42, 0.1)',
+                backgroundColor: 'rgba(220, 38, 38, 0.1)',
                 border: '1px solid var(--color-danger)',
                 color: 'var(--color-danger)',
                 fontSize: '0.875rem',
@@ -495,7 +699,7 @@ export default function Events() {
             />
           ) : selectedEvent ? (
             <div>
-              {/* Event Header Banner */}
+              {/* Event Header Banner with Ocean styling and Quick Stats */}
               <div
                 style={{
                   borderBottom: '1px solid var(--color-border)',
@@ -517,7 +721,7 @@ export default function Events() {
                     <h1
                       style={{
                         fontSize: '1.75rem',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         margin: '0 0 var(--space-2) 0',
                         color: 'var(--color-text)',
                       }}
@@ -535,13 +739,39 @@ export default function Events() {
                         color: 'var(--color-text-muted)',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                      {/* Members pill */}
+                      <button
+                        type="button"
+                        onClick={openMembersModal}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 'var(--space-1)',
+                          color: 'var(--color-accent)',
+                          fontWeight: 500,
+                          fontSize: '0.875rem',
+                        }}
+                      >
                         <Users size={16} />
                         <span>
                           {selectedEvent.member_count || 1}{' '}
                           {selectedEvent.member_count === 1 ? 'member' : 'members'}
                         </span>
-                      </div>
+                      </button>
+
+                      {/* Photo stats */}
+                      {eventStats && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                          <Sparkles size={16} color="var(--color-ocean-teal)" />
+                          <span>
+                            {eventStats.total_photos} photos ({formatBytes(eventStats.total_size_bytes)})
+                          </span>
+                        </div>
+                      )}
 
                       {formatDateRange(selectedEvent.start_date, selectedEvent.end_date) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
@@ -561,27 +791,76 @@ export default function Events() {
                     </div>
                   </div>
 
-                  {/* Copy Invite Link Action Button */}
-                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  {/* Header Actions: Copy link, Members, Regenerate Code, Leave / Delete */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
                     <button
                       type="button"
                       onClick={() => handleCopyInviteLink(selectedEvent.invite_code)}
                       className="btn btn-secondary"
-                      style={{ padding: '0.5rem 0.875rem', fontSize: '0.8125rem' }}
+                      style={{ padding: '0.4375rem 0.875rem', fontSize: '0.8125rem' }}
                       title="Copy public invitation link"
                     >
                       {copiedCode === selectedEvent.invite_code ? (
                         <>
-                          <Check size={16} color="var(--color-success)" />
-                          <span style={{ color: 'var(--color-success)' }}>Link copied</span>
+                          <Check size={15} color="var(--color-success)" />
+                          <span style={{ color: 'var(--color-success)' }}>Copied!</span>
                         </>
                       ) : (
                         <>
-                          <Copy size={16} />
+                          <Copy size={15} />
                           <span>Copy invite link</span>
                         </>
                       )}
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={openMembersModal}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.4375rem 0.75rem', fontSize: '0.8125rem' }}
+                      title="View all event members"
+                    >
+                      <Users size={15} />
+                      <span>Members</span>
+                    </button>
+
+                    {isOwner ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleRegenerateInviteCode}
+                          disabled={isRegeneratingCode}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.4375rem 0.75rem', fontSize: '0.8125rem' }}
+                          title="Generate a new invite code and expire old links"
+                        >
+                          <RefreshCw size={14} className={isRegeneratingCode ? 'animate-spin' : ''} />
+                          <span>New code</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowDeleteModal(true)}
+                          className="btn btn-danger"
+                          style={{ padding: '0.4375rem 0.75rem', fontSize: '0.8125rem' }}
+                          title="Delete this event"
+                        >
+                          <Trash2 size={14} />
+                          <span>Delete event</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowLeaveModal(true)}
+                        className="btn btn-secondary"
+                        style={{ padding: '0.4375rem 0.75rem', fontSize: '0.8125rem', color: 'var(--color-danger)' }}
+                        title="Leave this event"
+                      >
+                        <LogOut size={14} />
+                        <span>Leave event</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -600,14 +879,15 @@ export default function Events() {
                 )}
               </div>
 
-              {/* Event Photos Gallery */}
+              {/* Event Photos Gallery with isOwner passed */}
               <PhotoGallery
                 key={selectedEvent.id || selectedEvent.pk}
                 eventId={selectedEvent.id || selectedEvent.pk}
+                isOwner={isOwner}
               />
             </div>
           ) : (
-            /* Plain Empty State */
+            /* Empty State */
             <div
               style={{
                 display: 'flex',
@@ -623,13 +903,13 @@ export default function Events() {
                 style={{
                   width: '56px',
                   height: '56px',
-                  borderRadius: 'var(--radius-sm)',
+                  borderRadius: 'var(--radius-md)',
                   backgroundColor: 'var(--color-bg-muted)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginBottom: 'var(--space-4)',
-                  color: 'var(--color-text-muted)',
+                  color: 'var(--color-accent)',
                 }}
               >
                 <FolderPlus size={28} />
@@ -653,7 +933,7 @@ export default function Events() {
                   marginBottom: 'var(--space-6)',
                 }}
               >
-                Create your first event to start collecting full-quality photos from everyone in your group.
+                Create your first event album to start collecting full-quality photos from everyone in your group.
               </p>
               <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                 <button
@@ -680,6 +960,155 @@ export default function Events() {
         </main>
       </div>
 
+      {/* Interactive Members Modal */}
+      {showMembersModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 110,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'var(--space-4)',
+          }}
+        >
+          <div className="card" style={{ maxWidth: '480px', width: '100%', backgroundColor: 'var(--color-bg-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <Users size={18} color="var(--color-accent)" />
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--color-text)' }}>
+                  Event Members ({members.length})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMembersModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {loadingMembers ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-6)' }}>
+                <Loader2 size={20} className="animate-spin" color="var(--color-accent)" />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: '340px', overflowY: 'auto' }}>
+                {members.map((m) => {
+                  const initial = (m.display_name || m.email || 'M').charAt(0).toUpperCase();
+                  const isMemberOwner = m.role === 'owner';
+                  const isMe = String(m.user_id) === String(user?.id);
+
+                  return (
+                    <div
+                      key={m.id || m.user_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--space-2) var(--space-3)',
+                        backgroundColor: 'var(--color-bg)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                        <div
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: isMemberOwner ? 'var(--color-accent)' : 'var(--color-ocean-teal)',
+                            color: '#ffffff',
+                            fontWeight: 700,
+                            fontSize: '0.875rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {initial}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                              {m.display_name || m.email}
+                            </span>
+                            {isMe && (
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--color-accent)', fontWeight: 500 }}>
+                                (You)
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                            {m.email}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <span
+                          style={{
+                            fontSize: '0.6875rem',
+                            padding: '0.125rem 0.375rem',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: isMemberOwner ? 'rgba(2, 132, 199, 0.15)' : 'var(--color-bg-muted)',
+                            color: isMemberOwner ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                            fontWeight: 600,
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {m.role}
+                        </span>
+
+                        {isOwner && !isMemberOwner && !isMe && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(m.user_id, m.display_name || m.email)}
+                            disabled={removingUserId === m.user_id}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--color-danger)' }}
+                            title="Remove member from event"
+                          >
+                            <UserMinus size={13} />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-4)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border)' }}>
+              <button
+                type="button"
+                onClick={() => handleCopyInviteLink(selectedEvent.invite_code)}
+                className="btn btn-secondary"
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+              >
+                <Copy size={14} />
+                <span>Copy invite link</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMembersModal(false)}
+                className="btn btn-secondary"
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Manual Join Modal */}
       {showJoinModal && (
         <div
@@ -688,7 +1117,7 @@ export default function Events() {
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -706,22 +1135,23 @@ export default function Events() {
           >
             <h3
               style={{
-                fontSize: '1.25rem',
+                fontSize: '1.125rem',
                 fontWeight: 600,
                 margin: '0 0 var(--space-2) 0',
                 color: 'var(--color-text)',
               }}
             >
-              Join an event
+              Join an Event
             </h3>
             <p
               style={{
                 fontSize: '0.875rem',
                 color: 'var(--color-text-muted)',
+                lineHeight: 1.5,
                 margin: '0 0 var(--space-4) 0',
               }}
             >
-              Enter the invite code shared by the event organizer.
+              Enter the invite code you received from the event organizer to access this shared album.
             </p>
 
             {joinError && (
@@ -730,7 +1160,7 @@ export default function Events() {
                 style={{
                   padding: 'var(--space-2) var(--space-3)',
                   borderRadius: 'var(--radius-sm)',
-                  backgroundColor: 'rgba(201, 42, 42, 0.1)',
+                  backgroundColor: 'rgba(220, 38, 38, 0.1)',
                   border: '1px solid var(--color-danger)',
                   color: 'var(--color-danger)',
                   fontSize: '0.8125rem',
@@ -744,7 +1174,7 @@ export default function Events() {
             <form onSubmit={handleManualJoin}>
               <div style={{ marginBottom: 'var(--space-4)' }}>
                 <label
-                  htmlFor="joinCode"
+                  htmlFor="manual-invite-code"
                   style={{
                     display: 'block',
                     fontSize: '0.8125rem',
@@ -756,14 +1186,14 @@ export default function Events() {
                   Invite code
                 </label>
                 <input
-                  id="joinCode"
+                  id="manual-invite-code"
                   type="text"
                   required
-                  placeholder="e.g. ab12CD34ef"
-                  className="input"
                   value={joinCodeInput}
                   onChange={(e) => setJoinCodeInput(e.target.value)}
-                  disabled={isJoining}
+                  placeholder="e.g. 7mR_k20aBCd"
+                  className="input"
+                  style={{ fontFamily: 'var(--font-mono)' }}
                 />
               </div>
 
@@ -773,20 +1203,21 @@ export default function Events() {
                   onClick={() => {
                     setShowJoinModal(false);
                     setJoinError('');
+                    setJoinCodeInput('');
                   }}
-                  className="btn btn-secondary"
                   disabled={isJoining}
+                  className="btn btn-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-primary"
                   disabled={isJoining}
+                  className="btn btn-primary"
                 >
                   {isJoining ? (
                     <>
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={14} className="animate-spin" />
                       <span>Joining...</span>
                     </>
                   ) : (
@@ -795,6 +1226,110 @@ export default function Events() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Event Confirmation Modal */}
+      {showDeleteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 120,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'var(--space-4)',
+          }}
+        >
+          <div className="card" style={{ maxWidth: '420px', width: '100%', backgroundColor: 'var(--color-bg-subtle)' }}>
+            <h3 style={{ margin: '0 0 var(--space-2) 0', fontSize: '1.125rem', fontWeight: 600, color: 'var(--color-text)' }}>
+              Delete &quot;{selectedEvent?.name}&quot;?
+            </h3>
+            <p style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.875rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+              Are you sure? This will permanently delete this event, all uploaded photos, and remove all memberships. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeletingEvent}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteEvent}
+                disabled={isDeletingEvent}
+                className="btn btn-danger"
+              >
+                {isDeletingEvent ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Delete event</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Event Confirmation Modal */}
+      {showLeaveModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 120,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'var(--space-4)',
+          }}
+        >
+          <div className="card" style={{ maxWidth: '420px', width: '100%', backgroundColor: 'var(--color-bg-subtle)' }}>
+            <h3 style={{ margin: '0 0 var(--space-2) 0', fontSize: '1.125rem', fontWeight: 600, color: 'var(--color-text)' }}>
+              Leave &quot;{selectedEvent?.name}&quot;?
+            </h3>
+            <p style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.875rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+              You will lose access to this event and its photos unless someone shares a new invite link with you.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                disabled={isLeavingEvent}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLeaveEvent}
+                disabled={isLeavingEvent}
+                className="btn btn-danger"
+              >
+                {isLeavingEvent ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Leaving...</span>
+                  </>
+                ) : (
+                  <span>Leave event</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

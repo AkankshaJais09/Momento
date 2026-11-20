@@ -333,3 +333,46 @@ class EventPhotosZipDownloadView(APIView):
         response = HttpResponse(zip_buffer.getvalue(), content_type="application/zip")
         response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
         return response
+
+
+# Batch delete view: Allows event owner or photo uploader to delete multiple photos at once.
+class PhotoBatchDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, event_id):
+        event = get_event_or_none(event_id)
+        if event is None:
+            return Response({"detail": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        membership = Membership.objects(user=request.user, event=event).first()
+        if not membership:
+            return Response(
+                {"detail": "You do not have permission to delete photos in this event."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        photo_ids = request.data.get("photo_ids", [])
+        if not photo_ids or not isinstance(photo_ids, list):
+            return Response(
+                {"detail": "A list of photo_ids is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_owner = membership.role == Membership.ROLE_OWNER
+        valid_ids = [ObjectId(pid) for pid in photo_ids if ObjectId.is_valid(pid)]
+        photos = list(Photo.objects(id__in=valid_ids, event=event))
+
+        deleted_count = 0
+        for photo in photos:
+            # Owner can delete any photo; regular member can only delete their own
+            if is_owner or (photo.uploader and str(photo.uploader.id) == str(request.user.id)):
+                photo.delete()
+                deleted_count += 1
+
+        return Response(
+            {
+                "detail": f"Successfully deleted {deleted_count} photos.",
+                "deleted_count": deleted_count,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -7,7 +7,10 @@ from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-SECRET_KEY = config("SECRET_KEY")
+SECRET_KEY = config(
+    "SECRET_KEY",
+    default="django-insecure-photodrop-ocean-secret-key-super-secure-production-ready-50chars-min",
+)
 
 INSTALLED_APPS = [
     "django.contrib.auth",

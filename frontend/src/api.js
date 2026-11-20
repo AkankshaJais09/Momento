@@ -249,4 +249,24 @@ export async function downloadEventPhotosZip(eventId, photoIds) {
   window.URL.revokeObjectURL(blobUrl);
 }
 
+// Batch delete selected photos from an event
+export async function batchDeletePhotos(eventId, photoIds) {
+  return api.post(`/events/${eventId}/photos/batch-delete/`, { photo_ids: photoIds });
+}
+
+// Fetch member list for an event
+export async function getEventMembers(eventId) {
+  return api.get(`/events/${eventId}/members/`);
+}
+
+// Remove a member from an event (owner only)
+export async function removeEventMember(eventId, userId) {
+  return api.delete(`/events/${eventId}/members/${userId}/`);
+}
+
+// Fetch summary statistics for an event
+export async function getEventStats(eventId) {
+  return api.get(`/events/${eventId}/stats/`);
+}
+
 export default api;

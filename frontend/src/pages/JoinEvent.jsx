@@ -5,12 +5,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Users, AlertCircle, CheckCircle2, LogIn, UserPlus, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { api } from '../api';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 export default function JoinEvent() {
   const { code } = useParams();
   const { isAuthenticated } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -68,6 +70,7 @@ export default function JoinEvent() {
     try {
       const response = await api.post('/events/join/', { invite_code: code });
       setJoinSuccess(true);
+      showToast('Successfully joined event!', 'success');
       const eventId = response.event?.id || response.event?.pk;
       setTimeout(() => {
         if (eventId) {

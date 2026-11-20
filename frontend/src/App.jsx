@@ -3,6 +3,8 @@
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './context/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -28,57 +30,61 @@ function RootRoute() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <div
-          style={{
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        >
-          <Navbar />
-          <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <Routes>
-              <Route path="/" element={<RootRoute />} />
-              <Route path="/landing" element={<Home />} />
-              <Route
-                path="/events"
-                element={
-                  <ProtectedRoute>
-                    <Events />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/events/new"
-                element={
-                  <ProtectedRoute>
-                    <CreateEvent />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/events/:id"
-                element={
-                  <ProtectedRoute>
-                    <Events />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/join/:code" element={<JoinEvent />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/privacy" element={<Privacy />} />
-              <Route path="/terms" element={<Terms />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <div
+              style={{
+                minHeight: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: 'var(--color-bg)',
+                color: 'var(--color-text)',
+              }}
+            >
+              <Navbar />
+              <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Routes>
+                  <Route path="/" element={<RootRoute />} />
+                  <Route path="/landing" element={<Home />} />
+                  <Route
+                    path="/events"
+                    element={
+                      <ProtectedRoute>
+                        <Events />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/events/new"
+                    element={
+                      <ProtectedRoute>
+                        <CreateEvent />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/events/:id"
+                    element={
+                      <ProtectedRoute>
+                        <Events />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="/join/:code" element={<JoinEvent />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </main>
+              <Footer />
+            </div>
+          </BrowserRouter>
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

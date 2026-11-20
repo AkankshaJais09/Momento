@@ -2,111 +2,156 @@
 
 /*
   Design tokens as CSS custom properties.
-  Edit these to retheme the entire app.
   Typefaces: Inter (sans) + JetBrains Mono (mono).
-  Palette: slate-based neutral, blue accent. No purple, no gradients.
+  Palette: Ocean-inspired (deep navy, marine blues, coastal cyan, sea foam).
+  RULES.md: No gradients, no purple, buttons <= 6px radius, no emoji, transitions <= 150ms.
 */
 
 @layer base {
   :root {
     /* --- Typography --- */
-    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-    /* --- Radius --- */
+    /* --- Radius (RULES.md: buttons <= 6px, no pill shapes for buttons) --- */
     --radius-sm: 4px;
     --radius-md: 6px;
-    /* max for buttons per RULES.md */
     --radius-lg: 8px;
-    --radius-full: 9999px;
-    /* only for avatars / badges, never buttons */
+    --radius-full: 9999px; /* only for round avatars/badges, never buttons */
 
-    /* --- Spacing scale (rem) --- */
+    /* --- Spacing scale --- */
     --space-1: 0.25rem;
     --space-2: 0.5rem;
     --space-3: 0.75rem;
     --space-4: 1rem;
+    --space-5: 1.25rem;
     --space-6: 1.5rem;
     --space-8: 2rem;
     --space-12: 3rem;
     --space-16: 4rem;
 
-    /* --- Light mode colour palette --- */
-    --color-bg: #ffffff;
-    --color-bg-subtle: #f8f9fa;
-    --color-bg-muted: #f1f3f5;
-    --color-border: #dee2e6;
-    --color-border-focus: #228be6;
+    /* --- Ocean Light Mode Palette --- */
+    --color-bg: #f0f6fa;               /* Coastal sea mist */
+    --color-bg-subtle: #ffffff;        /* Pure wave surface */
+    --color-bg-muted: #e2eff7;         /* Gentle shallow water */
+    --color-border: #c3d9e9;           /* Reef border */
+    --color-border-focus: #0284c7;     /* Ocean wave blue */
 
-    --color-text: #111827;
-    --color-text-muted: #6b7280;
-    --color-text-subtle: #9ca3af;
+    --color-text: #081d2f;             /* Deep ocean navy text */
+    --color-text-muted: #3b5f7d;       /* Oceanic slate */
+    --color-text-subtle: #688fae;      /* Soft sea mist */
 
-    /* Accent: blue */
-    --color-accent: #1971c2;
-    --color-accent-hover: #1864ab;
+    /* Accent: Ocean Marine Blue */
+    --color-accent: #0284c7;
+    --color-accent-hover: #0369a1;
     --color-accent-fg: #ffffff;
+    --color-accent-subtle: #e0f2fe;
+
+    /* Secondary Ocean Cyan / Seafoam */
+    --color-ocean-teal: #0d9488;
+    --color-ocean-teal-fg: #ffffff;
+    --color-ocean-badge: #e0f2fe;
 
     /* Semantic */
-    --color-danger: #c92a2a;
+    --color-danger: #dc2626;
     --color-danger-fg: #ffffff;
-    --color-success: #2f9e44;
+    --color-success: #059669;
     --color-success-fg: #ffffff;
-    --color-warning: #e67700;
+    --color-warning: #d97706;
     --color-warning-fg: #ffffff;
 
-    /* Transition */
-    --transition-fast: 100ms ease;
+    /* Transitions under 150ms per RULES.md */
+    --transition-fast: 120ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* --- Dark mode colour palette (system preference or manual toggle) --- */
+  /* --- Ocean Dark Mode Palette --- */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) {
-      --color-bg: #0f1117;
-      --color-bg-subtle: #161b22;
-      --color-bg-muted: #1c2128;
-      --color-border: #30363d;
-      --color-border-focus: #388bfd;
+      --color-bg: #05101a;             /* Deepest ocean abyss */
+      --color-bg-subtle: #0a1c2d;      /* Midnight nautical surface */
+      --color-bg-muted: #102940;       /* Marine shelf */
+      --color-border: #193c5d;         /* Ocean reef divider */
+      --color-border-focus: #38bdf8;   /* Bioluminescent cyan */
 
-      --color-text: #e6edf3;
-      --color-text-muted: #8b949e;
-      --color-text-subtle: #484f58;
+      --color-text: #e0f2fe;           /* Seafoam white */
+      --color-text-muted: #82a8c6;     /* Ocean mist */
+      --color-text-subtle: #4d7494;    /* Deep shelf */
 
-      --color-accent: #388bfd;
-      --color-accent-hover: #58a6ff;
-      --color-accent-fg: #0d1117;
+      --color-accent: #0ea5e9;         /* Luminous sea azure */
+      --color-accent-hover: #38bdf8;   /* Bright crest */
+      --color-accent-fg: #031320;
+      --color-accent-subtle: rgba(14, 165, 233, 0.15);
 
-      --color-danger: #f85149;
-      --color-danger-fg: #0d1117;
-      --color-success: #3fb950;
-      --color-success-fg: #0d1117;
-      --color-warning: #d29922;
-      --color-warning-fg: #0d1117;
+      --color-ocean-teal: #14b8a6;
+      --color-ocean-teal-fg: #031320;
+      --color-ocean-badge: #0f2d48;
+
+      --color-danger: #ef4444;
+      --color-danger-fg: #031320;
+      --color-success: #10b981;
+      --color-success-fg: #031320;
+      --color-warning: #f59e0b;
+      --color-warning-fg: #031320;
     }
   }
 
   :root[data-theme='dark'],
   .dark {
-    --color-bg: #0f1117;
-    --color-bg-subtle: #161b22;
-    --color-bg-muted: #1c2128;
-    --color-border: #30363d;
-    --color-border-focus: #388bfd;
+    color-scheme: dark;
+    --color-bg: #05101a;
+    --color-bg-subtle: #0a1c2d;
+    --color-bg-muted: #102940;
+    --color-border: #193c5d;
+    --color-border-focus: #38bdf8;
 
-    --color-text: #e6edf3;
-    --color-text-muted: #8b949e;
-    --color-text-subtle: #484f58;
+    --color-text: #e0f2fe;
+    --color-text-muted: #82a8c6;
+    --color-text-subtle: #4d7494;
 
-    --color-accent: #388bfd;
-    --color-accent-hover: #58a6ff;
-    --color-accent-fg: #0d1117;
+    --color-accent: #0ea5e9;
+    --color-accent-hover: #38bdf8;
+    --color-accent-fg: #031320;
+    --color-accent-subtle: rgba(14, 165, 233, 0.15);
 
-    --color-danger: #f85149;
-    --color-danger-fg: #0d1117;
-    --color-success: #3fb950;
-    --color-success-fg: #0d1117;
-    --color-warning: #d29922;
-    --color-warning-fg: #0d1117;
+    --color-ocean-teal: #14b8a6;
+    --color-ocean-teal-fg: #031320;
+    --color-ocean-badge: #0f2d48;
+
+    --color-danger: #ef4444;
+    --color-danger-fg: #031320;
+    --color-success: #10b981;
+    --color-success-fg: #031320;
+    --color-warning: #f59e0b;
+    --color-warning-fg: #031320;
+  }
+
+  :root[data-theme='light'] {
+    color-scheme: light;
+    --color-bg: #f0f6fa;
+    --color-bg-subtle: #ffffff;
+    --color-bg-muted: #e2eff7;
+    --color-border: #c3d9e9;
+    --color-border-focus: #0284c7;
+
+    --color-text: #081d2f;
+    --color-text-muted: #3b5f7d;
+    --color-text-subtle: #688fae;
+
+    --color-accent: #0284c7;
+    --color-accent-hover: #0369a1;
+    --color-accent-fg: #ffffff;
+    --color-accent-subtle: #e0f2fe;
+
+    --color-ocean-teal: #0d9488;
+    --color-ocean-teal-fg: #ffffff;
+    --color-ocean-badge: #e0f2fe;
+
+    --color-danger: #dc2626;
+    --color-danger-fg: #ffffff;
+    --color-success: #059669;
+    --color-success-fg: #ffffff;
+    --color-warning: #d97706;
+    --color-warning-fg: #ffffff;
   }
 
   /* --- Base element styles --- */
@@ -115,16 +160,18 @@
     background-color: var(--color-bg);
     color: var(--color-text);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   body {
     margin: 0;
     min-height: 100dvh;
+    background-color: var(--color-bg);
+    color: var(--color-text);
   }
 
-  /* Respect reduced-motion: disable all transitions and animations */
+  /* Respect reduced-motion per RULES.md */
   @media (prefers-reduced-motion: reduce) {
-
     *,
     *::before,
     *::after {
@@ -133,7 +180,7 @@
     }
   }
 
-  /* Focus ring */
+  /* Ocean Focus ring */
   *:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
@@ -149,8 +196,7 @@
     justify-content: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-md);
-    /* 6px max, per RULES.md */
+    border-radius: var(--radius-md); /* 6px max, per RULES.md */
     border: 1px solid transparent;
     font-family: var(--font-sans);
     font-size: 0.875rem;
@@ -159,8 +205,10 @@
     cursor: pointer;
     transition: background-color var(--transition-fast),
       border-color var(--transition-fast),
-      color var(--transition-fast);
+      color var(--transition-fast),
+      box-shadow var(--transition-fast);
     text-decoration: none;
+    user-select: none;
   }
 
   .btn:disabled {
@@ -180,13 +228,24 @@
   }
 
   .btn-secondary {
-    background-color: transparent;
+    background-color: var(--color-bg-subtle);
     color: var(--color-text);
     border-color: var(--color-border);
   }
 
   .btn-secondary:hover:not(:disabled) {
     background-color: var(--color-bg-muted);
+    border-color: var(--color-border-focus);
+  }
+
+  .btn-teal {
+    background-color: var(--color-ocean-teal);
+    color: var(--color-ocean-teal-fg);
+    border-color: var(--color-ocean-teal);
+  }
+
+  .btn-teal:hover:not(:disabled) {
+    opacity: 0.9;
   }
 
   .btn-danger {
@@ -195,12 +254,21 @@
     border-color: var(--color-danger);
   }
 
+  .btn-danger:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
   /* Card */
   .card {
     background-color: var(--color-bg-subtle);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
+    transition: border-color var(--transition-fast);
+  }
+
+  .card:hover {
+    border-color: var(--color-border-focus);
   }
 
   /* Input */
@@ -209,16 +277,29 @@
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    background-color: var(--color-bg);
+    background-color: var(--color-bg-subtle);
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.875rem;
-    transition: border-color var(--transition-fast);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
 
   .input:focus {
     outline: none;
     border-color: var(--color-border-focus);
+    box-shadow: 0 0 0 1px var(--color-border-focus);
+  }
+
+  /* Date input calendar picker indicator: ensure bright white icon in dark mode */
+  :root[data-theme='dark'] input[type="date"]::-webkit-calendar-picker-indicator,
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.95;
+    cursor: pointer;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
   }
 
   /* Responsive Events Layout: left sidebar on desktop (>=768px), top bar on mobile (<768px) */
@@ -277,9 +358,19 @@
   .photo-grid-item {
     break-inside: avoid;
     margin-bottom: var(--space-4);
+    position: relative;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: var(--color-bg-muted);
+    border: 1px solid var(--color-border);
+    transition: border-color var(--transition-fast), transform var(--transition-fast);
   }
 
-  /* Rectangular filter tags (never pills) */
+  .photo-grid-item:hover {
+    border-color: var(--color-border-focus);
+  }
+
+  /* Rectangular filter tags (never pills per RULES.md) */
   .filter-tag {
     display: inline-flex;
     align-items: center;
@@ -289,14 +380,16 @@
     font-weight: 500;
     border-radius: var(--radius-sm); /* rectangular <=6px */
     border: 1px solid var(--color-border);
-    background-color: var(--color-bg);
+    background-color: var(--color-bg-subtle);
     color: var(--color-text);
     cursor: pointer;
     transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+    user-select: none;
   }
 
   .filter-tag:hover:not(.filter-tag-active) {
     background-color: var(--color-bg-muted);
+    border-color: var(--color-border-focus);
   }
 
   .filter-tag-active {
@@ -318,8 +411,8 @@
     padding: var(--space-3) var(--space-5);
     border-radius: var(--radius-md); /* 6px max */
     background-color: var(--color-bg-subtle);
-    border: 1px solid var(--color-border);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--color-accent);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   }
 
   /* Progress bar per file */
@@ -335,5 +428,47 @@
     height: 100%;
     background-color: var(--color-accent);
     transition: width 100ms ease;
+  }
+
+  /* Toast Notification Container */
+  .toast-container {
+    position: fixed;
+    bottom: var(--space-6);
+    right: var(--space-6);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    pointer-events: none;
+  }
+
+  .toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    min-width: 240px;
+    max-width: 380px;
+    transition: transform var(--transition-fast), opacity var(--transition-fast);
+  }
+
+  .toast-success {
+    border-left: 4px solid var(--color-success);
+  }
+
+  .toast-info {
+    border-left: 4px solid var(--color-accent);
+  }
+
+  .toast-danger {
+    border-left: 4px solid var(--color-danger);
   }
 }

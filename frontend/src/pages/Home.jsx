@@ -1,8 +1,9 @@
-// Public landing page explaining product functionality in three clear steps with one call to action.
-// Free of testimonials, customer counters, stock photography, and AI-generated imagery.
+// Home page: minimal centered layout with dark ocean mood.
+// Just a strong headline, subtitle, and one primary CTA button.
+// No testimonials, no counters, no stock photos, no AI imagery.
 
 import { Link } from 'react-router-dom';
-import { ArrowRight, FolderPlus, UploadCloud, DownloadCloud } from 'lucide-react';
+import { ArrowRight, Camera } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
@@ -11,213 +12,151 @@ export default function Home() {
 
   useDocumentMeta(
     'PhotoDrop - Full Quality Event Photo Sharing',
-    'One shared album for your trip. Everyone uploads, everyone downloads what they want.'
+    'One shared album for your group. Everyone uploads, everyone downloads at full quality.'
   );
 
   return (
+    // Full-height dark ocean panel filling the viewport below the navbar
     <div
       style={{
-        maxWidth: '1000px',
-        margin: '0 auto',
-        padding: 'var(--space-12) var(--space-4) var(--space-16) var(--space-4)',
+        minHeight: 'calc(100vh - 57px)',
+        backgroundColor: 'var(--color-bg)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--space-8) var(--space-4)',
+        textAlign: 'center',
       }}
     >
-      {/* Hero Section */}
-      <section
+      {/* Small icon mark above headline */}
+      <div
         style={{
-          textAlign: 'left',
-          maxWidth: '720px',
-          marginBottom: 'var(--space-16)',
+          width: '52px',
+          height: '52px',
+          borderRadius: 'var(--radius-md)',
+          backgroundColor: 'var(--color-bg-muted)',
+          border: '1px solid var(--color-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 'var(--space-6)',
+          color: 'var(--color-accent)',
         }}
       >
-        <h1
-          style={{
-            fontSize: '2.5rem',
-            fontWeight: 700,
-            lineHeight: 1.2,
-            letterSpacing: '-0.02em',
-            margin: '0 0 var(--space-4) 0',
-            color: 'var(--color-text)',
-          }}
-        >
-          One shared album for your trip. Everyone uploads, everyone downloads what they want.
-        </h1>
+        <Camera size={24} />
+      </div>
 
+      {/* Main headline */}
+      <h1
+        style={{
+          fontSize: 'clamp(2rem, 5vw, 3.25rem)',
+          fontWeight: 700,
+          lineHeight: 1.15,
+          letterSpacing: '-0.03em',
+          margin: '0 0 var(--space-4) 0',
+          color: 'var(--color-text)',
+          maxWidth: '640px',
+        }}
+      >
+        One album.{' '}
+        <span style={{ color: 'var(--color-accent)' }}>Everyone&apos;s</span>{' '}
+        photos.
+      </h1>
+
+      {/* Subtitle */}
+      <p
+        style={{
+          fontSize: 'clamp(1rem, 2.5vw, 1.1875rem)',
+          lineHeight: 1.65,
+          color: 'var(--color-text-muted)',
+          margin: '0 0 var(--space-8) 0',
+          maxWidth: '480px',
+        }}
+      >
+        Create a shared event album, invite your group, and collect every photo
+        at full resolution. No compression. No sign-up friction.
+      </p>
+
+      {/* Single primary CTA */}
+      <Link
+        to={isAuthenticated ? '/events' : '/register'}
+        className="btn btn-primary"
+        style={{
+          padding: '0.8125rem 2rem',
+          fontSize: '1rem',
+          fontWeight: 600,
+          letterSpacing: '0.01em',
+        }}
+      >
+        <span>{isAuthenticated ? 'Open my events' : 'Get started free'}</span>
+        <ArrowRight size={18} />
+      </Link>
+
+      {/* Secondary sign-in link for returning users */}
+      {!isAuthenticated && (
         <p
           style={{
-            fontSize: '1.125rem',
-            lineHeight: 1.6,
-            color: 'var(--color-text-muted)',
-            margin: '0 0 var(--space-8) 0',
+            marginTop: 'var(--space-4)',
+            fontSize: '0.875rem',
+            color: 'var(--color-text-subtle)',
           }}
         >
-          Create an event, send an invite link to your group, and collect every picture at full resolution.
-          No compression, no social media feeds, and no complex setup.
-        </p>
-
-        <div>
+          Already have an account?{' '}
           <Link
-            to={isAuthenticated ? '/events' : '/register'}
-            className="btn btn-primary"
+            to="/login"
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 600,
+              color: 'var(--color-accent)',
+              fontWeight: 500,
+              textDecoration: 'none',
             }}
           >
-            <span>{isAuthenticated ? 'Go to your events' : 'Create an event'}</span>
-            <ArrowRight size={18} />
+            Log in
           </Link>
-        </div>
-      </section>
+        </p>
+      )}
 
-      {/* Three Real Steps */}
-      <section>
-        <h2
-          style={{
-            fontSize: '1.25rem',
-            fontWeight: 600,
-            marginBottom: 'var(--space-6)',
-            color: 'var(--color-text)',
-          }}
-        >
-          How it works
-        </h2>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: 'var(--space-6)',
-          }}
-        >
-          {/* Step 1 */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div
+      {/* Three short facts row — no icons, no cards, plain text dividers */}
+      <div
+        style={{
+          marginTop: 'var(--space-16)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-6)',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
+      >
+        {[
+          'Full-resolution uploads',
+          'Shared invite link',
+          'Zip download',
+        ].map((fact, i, arr) => (
+          <div key={fact} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-6)' }}>
+            <span
               style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'var(--color-bg-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-accent)',
-                marginBottom: 'var(--space-4)',
+                fontSize: '0.8125rem',
+                color: 'var(--color-text-subtle)',
+                fontWeight: 500,
+                letterSpacing: '0.02em',
               }}
             >
-              <FolderPlus size={20} />
-            </div>
-
-            <h3
-              style={{
-                fontSize: '1.0625rem',
-                fontWeight: 600,
-                margin: '0 0 var(--space-2) 0',
-                color: 'var(--color-text)',
-              }}
-            >
-              1. Create an event
-            </h3>
-
-            <p
-              style={{
-                fontSize: '0.875rem',
-                lineHeight: 1.5,
-                color: 'var(--color-text-muted)',
-                margin: 0,
-              }}
-            >
-              Start an album with a title and optional dates. You receive a private invite link and code
-              to share with friends or family.
-            </p>
+              {fact}
+            </span>
+            {/* Divider between items, not after last */}
+            {i < arr.length - 1 && (
+              <span
+                style={{
+                  display: 'block',
+                  width: '1px',
+                  height: '14px',
+                  backgroundColor: 'var(--color-border)',
+                }}
+              />
+            )}
           </div>
-
-          {/* Step 2 */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'var(--color-bg-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-accent)',
-                marginBottom: 'var(--space-4)',
-              }}
-            >
-              <UploadCloud size={20} />
-            </div>
-
-            <h3
-              style={{
-                fontSize: '1.0625rem',
-                fontWeight: 600,
-                margin: '0 0 var(--space-2) 0',
-                color: 'var(--color-text)',
-              }}
-            >
-              2. Everyone uploads
-            </h3>
-
-            <p
-              style={{
-                fontSize: '0.875rem',
-                lineHeight: 1.5,
-                color: 'var(--color-text-muted)',
-                margin: 0,
-              }}
-            >
-              Members drag and drop photos from phones or laptops. Files are saved at original quality
-              without image compression.
-            </p>
-          </div>
-
-          {/* Step 3 */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'var(--color-bg-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-accent)',
-                marginBottom: 'var(--space-4)',
-              }}
-            >
-              <DownloadCloud size={20} />
-            </div>
-
-            <h3
-              style={{
-                fontSize: '1.0625rem',
-                fontWeight: 600,
-                margin: '0 0 var(--space-2) 0',
-                color: 'var(--color-text)',
-              }}
-            >
-              3. Download what you want
-            </h3>
-
-            <p
-              style={{
-                fontSize: '0.875rem',
-                lineHeight: 1.5,
-                color: 'var(--color-text-muted)',
-                margin: 0,
-              }}
-            >
-              Filter by person, favorites, or calendar date. Select the shots you want and download them
-              individually or as a single zip archive.
-            </p>
-          </div>
-        </div>
-      </section>
+        ))}
+      </div>
     </div>
   );
 }
