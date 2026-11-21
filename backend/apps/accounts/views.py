@@ -65,7 +65,7 @@ class CustomTokenRefreshView(TokenRefreshView):
     serializer_class = CustomTokenRefreshSerializer
 
 
-# Profile view: Lets a logged-in user view their profile or update their display name.
+# Profile view: Lets a logged-in user view their profile, update their display name, or delete their account and photos.
 class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
     authentication_classes = [MongoJWTAuthentication]
@@ -79,3 +79,32 @@ class UserProfileView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        user = request.user
+
+        from apps.events.models import Event, Membership
+        from apps.photos.models import Photo, Like
+
+        # 1. Delete all events owned by this user (including all photos in those events)
+        owned_events = Event.objects(owner=user)
+        for event in owned_events:
+            for photo in Photo.objects(event=event):
+                photo.delete()
+            Membership.objects(event=event).delete()
+            event.delete()
+
+        # 2. Delete any remaining photos uploaded by this user in other events
+        for photo in Photo.objects(uploader=user):
+            photo.delete()
+
+        # 3. Clean up any likes created by this user
+        Like.objects(user=user).delete()
+
+        # 4. Clean up any remaining memberships
+        Membership.objects(user=user).delete()
+
+        # 5. Delete the user document
+        user.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

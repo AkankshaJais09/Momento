@@ -552,3 +552,61 @@ class TestRegenerateInviteCode:
 
         regen_res = client_outsider.post(f"/api/events/{event_id}/regenerate-invite-code/", format="json")
         assert regen_res.status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestEventMembers:
+    def test_list_members_as_event_member(self):
+        owner = create_user("owner_mem@example.com")
+        client_owner = auth_client_for(owner)
+        res = client_owner.post("/api/events/", {"name": "Members Event"}, format="json")
+        event_id = res.data["id"]
+        invite_code = res.data["invite_code"]
+
+        member = create_user("guest_mem@example.com")
+        client_member = auth_client_for(member)
+        client_member.post("/api/events/join/", {"invite_code": invite_code}, format="json")
+
+        list_res = client_member.get(f"/api/events/{event_id}/members/")
+        assert list_res.status_code == status.HTTP_200_OK
+        assert len(list_res.data) == 2
+        emails = [m["email"] for m in list_res.data]
+        assert "owner_mem@example.com" in emails
+        assert "guest_mem@example.com" in emails
+
+    def test_owner_remove_member_success(self):
+        owner = create_user("owner_rm@example.com")
+        client_owner = auth_client_for(owner)
+        res = client_owner.post("/api/events/", {"name": "Remove Test"}, format="json")
+        event_id = res.data["id"]
+        invite_code = res.data["invite_code"]
+
+        member = create_user("to_be_removed@example.com")
+        client_member = auth_client_for(member)
+        client_member.post("/api/events/join/", {"invite_code": invite_code}, format="json")
+
+        del_res = client_owner.delete(f"/api/events/{event_id}/members/{member.id}/")
+        assert del_res.status_code == status.HTTP_200_OK
+
+        # Verify member count decreased
+        list_res = client_owner.get(f"/api/events/{event_id}/members/")
+        assert len(list_res.data) == 1
+
+    def test_cannot_remove_event_owner(self):
+        owner = create_user("owner_self@example.com")
+        client_owner = auth_client_for(owner)
+        res = client_owner.post("/api/events/", {"name": "Self Remove Test"}, format="json")
+        event_id = res.data["id"]
+
+        del_res = client_owner.delete(f"/api/events/{event_id}/members/{owner.id}/")
+        assert del_res.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_event_stats(self):
+        owner = create_user("owner_stats@example.com")
+        client_owner = auth_client_for(owner)
+        res = client_owner.post("/api/events/", {"name": "Stats Test"}, format="json")
+        event_id = res.data["id"]
+
+        stats_res = client_owner.get(f"/api/events/{event_id}/stats/")
+        assert stats_res.status_code == status.HTTP_200_OK
+        assert stats_res.data["member_count"] == 1
+        assert stats_res.data["total_photos"] == 0

@@ -146,3 +146,31 @@ class InvitePreviewSerializer(serializers.Serializer):
 
     name = serializers.CharField(read_only=True)
     member_count = serializers.IntegerField(read_only=True)
+
+
+class MembershipSerializer(serializers.Serializer):
+    """Serializer representing an event member."""
+
+    id = serializers.CharField(source="pk", read_only=True)
+    user_id = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    role = serializers.CharField(read_only=True)
+    joined_at = serializers.DateTimeField(read_only=True)
+
+    def get_user_id(self, obj):
+        return str(obj.user.id) if obj.user else None
+
+    def get_display_name(self, obj):
+        return getattr(obj.user, "display_name", "") if obj.user else ""
+
+    def get_email(self, obj):
+        return getattr(obj.user, "email", "") if obj.user else ""
+
+
+class EventStatsSerializer(serializers.Serializer):
+    """Serializer for event statistics (photo count, total size, member count)."""
+
+    total_photos = serializers.IntegerField(read_only=True)
+    total_size_bytes = serializers.IntegerField(read_only=True)
+    member_count = serializers.IntegerField(read_only=True)
