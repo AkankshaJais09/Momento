@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 import io
 import mimetypes
 import os
-import zipfile
 import mongoengine
 import mongomock
 from PIL import Image
@@ -785,7 +784,6 @@ class TestPhotoDeletion:
         assert Photo.objects(id=photo_a.id).first() is not None
 
 
-<<<<<<< HEAD
 class TestEventDeletionCleanup:
     def test_owner_deletion_removes_event_photos_comments_and_media(self):
         owner = create_user("owner@example.com")
@@ -812,223 +810,11 @@ class TestEventDeletionCleanup:
             thumbnail=relative_paths[1],
             medium_preview=relative_paths[2],
             voice_note=relative_paths[3],
-=======
-class TestSinglePhotoDownload:
-    # Tests for GET /api/photos/<id>/download/ returning the original file.
-
-    def _create_photo_with_file(self, event, uploader, filename="test_photo.jpg"):
-        """Helper: create a photo record and write a real file to the temp media directory."""
-        file_content = b"fake-jpeg-bytes-for-testing"
-        rel_dir = f"photos/{event.id}/original"
-        abs_dir = os.path.join(settings.MEDIA_ROOT, rel_dir)
-        os.makedirs(abs_dir, exist_ok=True)
-        rel_path = f"{rel_dir}/{filename}"
-        abs_path = os.path.join(settings.MEDIA_ROOT, rel_path)
-        with open(abs_path, "wb") as f:
-            f.write(file_content)
-
-        photo = Photo(
-            event=event,
-            uploader=uploader,
-            original_file=rel_path,
-            thumbnail=f"photos/{event.id}/thumbnail/{filename}",
-            medium_preview=f"photos/{event.id}/medium/{filename}",
-            width=100,
-            height=100,
-            taken_at=datetime.utcnow(),
-            size_bytes=len(file_content),
-            original_filename=filename,
-        ).save()
-        return photo, file_content
-
-    def test_member_can_download_original_photo(self):
-        owner = create_user("owner@example.com")
-        member = create_user("member@example.com")
-        event = Event(name="Download Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-        Membership(user=member, event=event, role=Membership.ROLE_MEMBER).save()
-
-        photo, file_content = self._create_photo_with_file(event, owner)
-        client = auth_client_for(member)
-
-        res = client.get(f"/api/photos/{photo.id}/download/")
-        assert res.status_code == status.HTTP_200_OK
-        # FileResponse streams content, read it all
-        downloaded = b"".join(res.streaming_content)
-        assert downloaded == file_content
-
-    def test_non_member_cannot_download_photo(self):
-        owner = create_user("owner@example.com")
-        outsider = create_user("outsider@example.com")
-        event = Event(name="Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        photo, _ = self._create_photo_with_file(event, owner)
-        client = auth_client_for(outsider)
-
-        res = client.get(f"/api/photos/{photo.id}/download/")
-        assert res.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_download_nonexistent_photo_returns_404(self):
-        owner = create_user("owner@example.com")
-        client = auth_client_for(owner)
-        res = client.get("/api/photos/000000000000000000000000/download/")
-        assert res.status_code == status.HTTP_404_NOT_FOUND
-
-    def test_unauthenticated_user_cannot_download(self):
-        client = APIClient()
-        res = client.get("/api/photos/000000000000000000000000/download/")
-        assert res.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-class TestZipDownload:
-    # Tests for POST /api/events/<id>/download/ returning a zip of selected photos.
-
-    def _create_photo_with_file(self, event, uploader, filename="photo.jpg", content=None):
-        """Helper: create a photo record and write a real file to the temp media directory."""
-        file_content = content or f"bytes-for-{filename}".encode()
-        rel_dir = f"photos/{event.id}/original"
-        abs_dir = os.path.join(settings.MEDIA_ROOT, rel_dir)
-        os.makedirs(abs_dir, exist_ok=True)
-        rel_path = f"{rel_dir}/{filename}"
-        abs_path = os.path.join(settings.MEDIA_ROOT, rel_path)
-        with open(abs_path, "wb") as f:
-            f.write(file_content)
-
-        photo = Photo(
-            event=event,
-            uploader=uploader,
-            original_file=rel_path,
-            thumbnail=f"photos/{event.id}/thumbnail/{filename}",
-            medium_preview=f"photos/{event.id}/medium/{filename}",
-            width=100,
-            height=100,
-            taken_at=datetime.utcnow(),
-            size_bytes=len(file_content),
-            original_filename=filename,
-        ).save()
-        return photo, file_content
-
-    def test_member_can_download_zip_of_selected_photos(self):
-        owner = create_user("owner@example.com")
-        member = create_user("member@example.com")
-        event = Event(name="Zip Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-        Membership(user=member, event=event, role=Membership.ROLE_MEMBER).save()
-
-        p1, content1 = self._create_photo_with_file(event, owner, "a.jpg", b"aaa-content")
-        p2, content2 = self._create_photo_with_file(event, owner, "b.jpg", b"bbb-content")
-
-        client = auth_client_for(member)
-        res = client.post(
-            f"/api/events/{event.id}/download/",
-            {"photo_ids": [str(p1.id), str(p2.id)]},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_200_OK
-        assert res["Content-Type"] == "application/zip"
-
-        # Verify the zip contains the two files with correct content
-        zip_buf = io.BytesIO(res.content)
-        with zipfile.ZipFile(zip_buf, "r") as zf:
-            names = zf.namelist()
-            assert len(names) == 2
-            assert "a.jpg" in names
-            assert "b.jpg" in names
-            assert zf.read("a.jpg") == content1
-            assert zf.read("b.jpg") == content2
-
-    def test_zip_rejects_more_than_50_photos(self):
-        owner = create_user("owner@example.com")
-        event = Event(name="Big Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        client = auth_client_for(owner)
-        # Send 51 fake IDs (they do not need to exist, the limit check comes first)
-        fake_ids = [f"aaaa{str(i).zfill(20)}" for i in range(51)]
-        res = client.post(
-            f"/api/events/{event.id}/download/",
-            {"photo_ids": fake_ids},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_400_BAD_REQUEST
-        assert "50" in str(res.data["detail"])
-
-    def test_non_member_cannot_download_zip(self):
-        owner = create_user("owner@example.com")
-        outsider = create_user("outsider@example.com")
-        event = Event(name="Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        p1, _ = self._create_photo_with_file(event, owner, "x.jpg")
-        client = auth_client_for(outsider)
-
-        res = client.post(
-            f"/api/events/{event.id}/download/",
-            {"photo_ids": [str(p1.id)]},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_zip_with_no_photo_ids_returns_400(self):
-        owner = create_user("owner@example.com")
-        event = Event(name="Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        client = auth_client_for(owner)
-        res = client.post(
-            f"/api/events/{event.id}/download/",
-            {},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_zip_with_invalid_photo_ids_returns_404(self):
-        owner = create_user("owner@example.com")
-        event = Event(name="Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        client = auth_client_for(owner)
-        res = client.post(
-            f"/api/events/{event.id}/download/",
-            {"photo_ids": ["000000000000000000000000"]},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_404_NOT_FOUND
-
-    def test_unauthenticated_user_cannot_download_zip(self):
-        owner = create_user("owner@example.com")
-        event = Event(name="Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        client = APIClient()
-        res = client.post(
-            f"/api/events/{event.id}/download/",
-            {"photo_ids": ["000000000000000000000000"]},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-class TestPhotoBatchDelete:
-    def test_owner_batch_delete_photos(self):
-        owner = create_user("owner_batch@example.com")
-        event = Event(name="Batch Event", owner=owner).save()
-        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
-
-        p1 = Photo(
-            event=event,
-            uploader=owner,
-            original_file="b1.jpg",
-            thumbnail="b1_t.jpg",
-            medium_preview="b1_m.jpg",
->>>>>>> 898b826f7d4c2eb9d89ffa11785bb347e39fe93f
             width=100,
             height=100,
             taken_at=datetime.utcnow(),
             size_bytes=100,
         ).save()
-<<<<<<< HEAD
         Like(user=owner, photo=photo).save()
         PhotoComment(
             photo=photo,
@@ -1046,26 +832,3 @@ class TestPhotoBatchDelete:
         assert PhotoComment.objects(photo=photo).count() == 0
         assert Like.objects(photo=photo).count() == 0
         assert all(not os.path.exists(os.path.join(settings.MEDIA_ROOT, path)) for path in relative_paths)
-=======
-        p2 = Photo(
-            event=event,
-            uploader=owner,
-            original_file="b2.jpg",
-            thumbnail="b2_t.jpg",
-            medium_preview="b2_m.jpg",
-            width=100,
-            height=100,
-            taken_at=datetime.utcnow(),
-            size_bytes=100,
-        ).save()
-
-        client = auth_client_for(owner)
-        res = client.post(
-            f"/api/events/{event.id}/photos/batch-delete/",
-            {"photo_ids": [str(p1.id), str(p2.id)]},
-            format="json",
-        )
-        assert res.status_code == status.HTTP_200_OK
-        assert res.data["deleted_count"] == 2
-        assert Photo.objects(event=event).count() == 0
->>>>>>> 898b826f7d4c2eb9d89ffa11785bb347e39fe93f

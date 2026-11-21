@@ -17,10 +17,8 @@ from apps.events.permissions import IsEventMember, IsEventOwner
 from apps.events.serializers import (
     EventCreateUpdateSerializer,
     EventSerializer,
-    EventStatsSerializer,
     InvitePreviewSerializer,
     JoinEventSerializer,
-    MembershipSerializer,
 )
 from apps.photos.models import Photo, PhotoComment
 
@@ -296,20 +294,13 @@ class RegenerateInviteCodeView(APIView):
         )
 
 
-<<<<<<< HEAD
 class EventContributorsView(APIView):
     permission_classes = [IsAuthenticated]
-=======
-# Member list view: Lists all members in an event for any event member.
-class EventMembersView(APIView):
-    permission_classes = [IsAuthenticated, IsEventMember]
->>>>>>> 898b826f7d4c2eb9d89ffa11785bb347e39fe93f
 
     def get(self, request, pk):
         event = get_event_or_none(pk)
         if event is None:
             return Response({"detail": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
-<<<<<<< HEAD
         if str(event.owner.id) != str(request.user.id):
             return Response(
                 {"detail": "Only the host can view contributors."},
@@ -377,73 +368,3 @@ class EventMembersView(APIView):
             contribution["email"] = user.email
 
         return Response(list(contributions.values()), status=status.HTTP_200_OK)
-=======
-
-        self.check_object_permissions(request, event)
-        memberships = Membership.objects(event=event).order_by("role", "-joined_at")
-        serializer = MembershipSerializer(memberships, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# Member detail view: Allows event owner to remove a member from the event.
-class EventMemberDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsEventOwner]
-
-    def delete(self, request, pk, user_id):
-        event = get_event_or_none(pk)
-        if event is None:
-            return Response({"detail": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        self.check_object_permissions(request, event)
-
-        if str(event.owner.id) == str(user_id):
-            return Response(
-                {"detail": "The event owner cannot be removed."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        target_user = None
-        if ObjectId.is_valid(user_id):
-            target_user = User.objects(id=ObjectId(user_id)).first()
-        if not target_user:
-            target_user = User.objects(id=user_id).first()
-
-        if not target_user:
-            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        membership = Membership.objects(event=event, user=target_user).first()
-        if not membership:
-            return Response(
-                {"detail": "User is not a member of this event."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        membership.delete()
-        return Response({"detail": "Member removed successfully."}, status=status.HTTP_200_OK)
-
-
-# Event stats view: Returns summary statistics for an event.
-class EventStatsView(APIView):
-    permission_classes = [IsAuthenticated, IsEventMember]
-
-    def get(self, request, pk):
-        from apps.photos.models import Photo
-
-        event = get_event_or_none(pk)
-        if event is None:
-            return Response({"detail": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        self.check_object_permissions(request, event)
-
-        photos = Photo.objects(event=event)
-        total_photos = photos.count()
-        total_size = sum(p.size_bytes or 0 for p in photos.only("size_bytes"))
-        member_count = Membership.objects(event=event).count()
-
-        data = {
-            "total_photos": total_photos,
-            "total_size_bytes": total_size,
-            "member_count": member_count,
-        }
-        return Response(EventStatsSerializer(data).data, status=status.HTTP_200_OK)
->>>>>>> 898b826f7d4c2eb9d89ffa11785bb347e39fe93f
