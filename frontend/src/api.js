@@ -2,7 +2,17 @@
 // Automatically adds JWT access token from localStorage to headers.
 
 const API_BASE = '/api'
+const RESPONSE_CACHE_TTL_MS = 5000
+const responseCache = new Map()
+const pendingRequests = new Map()
+let cacheRevision = 0
 let refreshPromise = null
+
+function clearResponseCache() {
+  cacheRevision += 1
+  responseCache.clear()
+  pendingRequests.clear()
+}
 
 export function getToken() {
   return localStorage.getItem('access_token')
@@ -13,6 +23,7 @@ export function getRefreshToken() {
 }
 
 export function setToken(token) {
+  clearResponseCache()
   if (token) {
     localStorage.setItem('access_token', token)
   } else {
@@ -88,7 +99,7 @@ async function responseData(response) {
   return data
 }
 
-export async function request(path, options = {}) {
+async function performRequest(path, options) {
   let response = await fetchRequest(path, options, getToken())
   const isAuthRequest = path.startsWith('/auth/login')
     || path.startsWith('/auth/register')
@@ -99,6 +110,44 @@ export async function request(path, options = {}) {
     if (access) response = await fetchRequest(path, options, access)
   }
   return responseData(response)
+}
+
+export async function request(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase()
+  if (method !== 'GET') {
+    clearResponseCache()
+    try {
+      return await performRequest(path, options)
+    } finally {
+      clearResponseCache()
+    }
+  }
+
+  const key = `${getToken() || ''}:${path}`
+  const cached = responseCache.get(key)
+  if (cached?.expiresAt > Date.now()) return cached.data
+  if (cached) responseCache.delete(key)
+
+  const pending = pendingRequests.get(key)
+  if (pending) return pending
+
+  const revision = cacheRevision
+  const requestPromise = performRequest(path, options)
+    .then((data) => {
+      if (revision === cacheRevision) {
+        if (responseCache.size >= 100) responseCache.clear()
+        responseCache.set(key, {
+          data,
+          expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+        })
+      }
+      return data
+    })
+    .finally(() => {
+      if (pendingRequests.get(key) === requestPromise) pendingRequests.delete(key)
+    })
+  pendingRequests.set(key, requestPromise)
+  return requestPromise
 }
 
 export async function requestBlob(path, options = {}) {
