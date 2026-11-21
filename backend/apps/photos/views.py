@@ -8,17 +8,19 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 from django.conf import settings
 from django.http import FileResponse, HttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from mongoengine.queryset.visitor import Q
 
 from apps.accounts.models import User
 from apps.events.models import Event, Membership
-from apps.photos.models import Photo, Like
-from apps.photos.serializers import PhotoSerializer
-from apps.photos.services import process_and_save_photo, validate_photo_file
+from apps.photos.models import Photo, Like, PhotoComment
+from apps.photos.serializers import PhotoCommentSerializer, PhotoSerializer, photo_serializer_context
+from apps.photos.services import process_and_save_photo, save_voice_note, validate_photo_file
 
 
 def get_event_or_none(pk):
@@ -64,10 +66,24 @@ class PhotoListUploadView(APIView):
         return event, None
 
     def get(self, request, event_id):
-        # List photos ordered newest first, with query filters and 20-per-page pagination
         event, error = self._get_membership_or_error(request, event_id)
         if error:
             return error
+
+        release_at = event.capsule_release_at
+        is_owner = str(event.owner.id) == str(request.user.id)
+        if release_at and release_at > timezone.now():
+            if not (is_owner and request.query_params.get("include_hidden") == "true"):
+                return Response(
+                    {
+                        "count": 0,
+                        "total_pages": 1,
+                        "current_page": 1,
+                        "results": [],
+                        "capsule_release_at": release_at,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
         photos = Photo.objects(event=event).order_by("-taken_at", "-created_at")
 
@@ -89,7 +105,7 @@ class PhotoListUploadView(APIView):
 
         # Filter by photos liked by the logged-in user
         if request.query_params.get("favorites", "").lower() in ("true", "1"):
-            liked_photo_ids = [like.photo.id for like in Like.objects(user=request.user) if like.photo]
+            liked_photo_ids = Like._get_collection().distinct("photo", {"user": request.user.id})
             photos = photos.filter(id__in=liked_photo_ids)
 
         # Filter by photos taken on a specific calendar day (YYYY-MM-DD)
@@ -117,24 +133,42 @@ class PhotoListUploadView(APIView):
         end = start + page_size
         paged_photos = list(photos[start:end])
 
-        serializer = PhotoSerializer(paged_photos, many=True, context={"request": request})
-        return Response(
-            {
-                "count": total_count,
-                "total_pages": total_pages,
-                "current_page": page,
-                "results": serializer.data,
-            },
-            status=status.HTTP_200_OK,
+        serializer = PhotoSerializer(
+            paged_photos,
+            many=True,
+            context=photo_serializer_context(paged_photos, request),
         )
+        response_data = {
+            "count": total_count,
+            "total_pages": total_pages,
+            "current_page": page,
+            "results": serializer.data,
+        }
+        if (
+            page == 1
+            and not uploader_param
+            and request.query_params.get("mine", "").lower() not in ("true", "1")
+            and request.query_params.get("favorites", "").lower() not in ("true", "1")
+            and not day_param
+        ):
+            uploader_ids = Photo._get_collection().distinct("uploader", {"event": event.id})
+            users = User.objects(id__in=uploader_ids).only("display_name")
+            response_data["contributors"] = [
+                {"id": str(user.id), "display_name": user.display_name}
+                for user in users
+            ]
+        return Response(response_data, status=status.HTTP_200_OK)
 
     def post(self, request, event_id):
-        # Upload multiple photos to an event
         event, error = self._get_membership_or_error(request, event_id)
         if error:
             return error
+        if event.uploads_closed:
+            return Response(
+                {"detail": "Uploads are closed for this Momento."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        # Read uploaded files from form data
         files = request.FILES.getlist("files") or request.FILES.getlist("file") or list(request.FILES.values())
 
         if not files:
@@ -154,16 +188,87 @@ class PhotoListUploadView(APIView):
         for file in files:
             validate_photo_file(file)
 
-        # Save files locally and create database records
-        saved_photos = [process_and_save_photo(f, event, request.user) for f in files]
+        voice_file = request.FILES.get("voice_note")
+        voice_duration = None
+        voice_path = None
+        if voice_file:
+            if not event.voice_notes_enabled:
+                return Response(
+                    {"detail": "Voice notes are disabled for this Momento."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                voice_duration = float(request.data.get("voice_note_duration", 0))
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Voice note duration is invalid."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not 0 < voice_duration <= 30:
+                return Response(
+                    {"detail": "Voice notes must be 30 seconds or shorter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            voice_path = save_voice_note(voice_file, event)
 
-        serializer = PhotoSerializer(saved_photos, many=True, context={"request": request})
+        caption = str(request.data.get("caption", "")).strip()[:500]
+        quest = str(request.data.get("quest", "")).strip()[:80]
+        saved_photos = [
+            process_and_save_photo(
+                file,
+                event,
+                request.user,
+                caption=caption,
+                quest=quest,
+                voice_note_path=voice_path if index == 0 else None,
+                voice_note_duration=voice_duration if index == 0 else None,
+            )
+            for index, file in enumerate(files)
+        ]
+
+        serializer = PhotoSerializer(
+            saved_photos,
+            many=True,
+            context=photo_serializer_context(saved_photos, request),
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 # Detail view: Lets the photo uploader or event owner delete a photo.
 class PhotoDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        photo = get_photo_or_none(pk)
+        if photo is None:
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        event = photo.event
+        is_member = Membership.objects(user=request.user, event=event).first() is not None
+        if not is_member:
+            return Response(
+                {"detail": "You do not have permission to access this photo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        release_at = event.capsule_release_at
+        if release_at and release_at > timezone.now():
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        event_photos = Photo.objects(event=event)
+        total_count = event_photos.count()
+        newer_count = event_photos.filter(
+            Q(taken_at__gt=photo.taken_at)
+            | (Q(taken_at=photo.taken_at) & Q(created_at__gt=photo.created_at))
+        ).count()
+        serializer = PhotoSerializer(
+            photo,
+            context=photo_serializer_context([photo], request),
+        )
+        data = serializer.data
+        data["position"] = newer_count + 1
+        data["event_photo_count"] = total_count
+        return Response(data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, event_id=None):
         photo = get_photo_or_none(pk)
@@ -265,8 +370,74 @@ class PhotoDownloadView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        filename = photo.original_filename or os.path.basename(photo.original_file)
+        filename = f"momento-{photo.event.id}-{photo.id}.jpg"
         return FileResponse(open(full_path, "rb"), as_attachment=True, filename=filename)
+
+
+class PhotoCommentsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_photo(self, request, pk):
+        photo = get_photo_or_none(pk)
+        if photo is None:
+            return None, Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not Membership.objects(user=request.user, event=photo.event).first():
+            return None, Response(
+                {"detail": "You do not have permission to access comments for this photo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return photo, None
+
+    def get(self, request, pk):
+        photo, error = self._get_photo(request, pk)
+        if error:
+            return error
+        comments = PhotoComment.objects(photo=photo)
+        serializer = PhotoCommentSerializer(
+            comments,
+            many=True,
+            context={"request": request},
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, pk):
+        photo, error = self._get_photo(request, pk)
+        if error:
+            return error
+
+        text = str(request.data.get("text", "")).strip()[:1000]
+        voice_file = request.FILES.get("voice_note")
+        try:
+            duration = float(request.data.get("voice_duration", 0)) if voice_file else None
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Voice comment duration is invalid."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not text and not voice_file:
+            return Response(
+                {"detail": "Add text or a voice comment."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if voice_file and (
+            not photo.event.voice_notes_enabled or not 0 < duration <= 30
+        ):
+            return Response(
+                {"detail": "Voice comments must be enabled and 30 seconds or shorter."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        voice_path = save_voice_note(voice_file, photo.event) if voice_file else None
+        comment = PhotoComment(
+            photo=photo,
+            user=request.user,
+            text=text,
+            voice_file=voice_path,
+            voice_duration=duration,
+        ).save()
+        serializer = PhotoCommentSerializer(comment, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 # Zip download view: Bundles selected photos into a zip file for members (max 50).
@@ -316,7 +487,7 @@ class EventPhotosZipDownloadView(APIView):
             for photo in photos:
                 full_path = os.path.join(settings.MEDIA_ROOT, photo.original_file)
                 if os.path.exists(full_path):
-                    base_name = photo.original_filename or os.path.basename(photo.original_file)
+                    base_name = f"momento-{event.id}-{photo.id}.jpg"
                     # Avoid duplicate file names inside zip archive
                     name = base_name
                     counter = 1

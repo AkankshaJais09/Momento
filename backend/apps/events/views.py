@@ -1,12 +1,17 @@
 # Event views for managing group events, memberships, and invite links.
 # Only members can view events, and only the owner can edit, delete, or regenerate codes.
 
+import os
+from collections import defaultdict
+from django.conf import settings
+from django.utils import timezone
 from bson import ObjectId
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import User
 from apps.events.models import Event, Membership
 from apps.events.permissions import IsEventMember, IsEventOwner
 from apps.events.serializers import (
@@ -15,6 +20,7 @@ from apps.events.serializers import (
     InvitePreviewSerializer,
     JoinEventSerializer,
 )
+from apps.photos.models import Photo, PhotoComment
 
 
 def get_event_or_none(pk):
@@ -27,17 +33,82 @@ def get_event_or_none(pk):
         return None
 
 
+def delete_media_file(relative_path):
+    if not relative_path:
+        return
+    try:
+        os.remove(os.path.join(settings.MEDIA_ROOT, relative_path))
+    except FileNotFoundError:
+        pass
+
+
 # List and create view: Lists events where the logged-in user is a member, or creates a new event.
 class EventListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Find all events the current user belongs to
-        memberships = Membership.objects(user=request.user)
-        event_ids = [m.event.id for m in memberships if m.event]
-        events = Event.objects(id__in=event_ids)
-        serializer = EventSerializer(events, many=True, context={"request": request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        user_memberships = list(
+            Membership.objects(user=request.user)
+            .only("event", "role")
+            .as_pymongo()
+        )
+        event_ids = [membership["event"] for membership in user_memberships if membership.get("event")]
+        events = list(Event.objects(id__in=event_ids))
+        if not events:
+            return Response([], status=status.HTTP_200_OK)
+
+        member_counts = defaultdict(int)
+        for membership in Membership.objects(event__in=events).only("event").as_pymongo():
+            member_counts[str(membership["event"])] += 1
+
+        my_roles = {
+            str(membership["event"]): membership["role"]
+            for membership in user_memberships
+            if membership.get("event")
+        }
+        serializer = EventSerializer(
+            events,
+            many=True,
+            context={
+                "request": request,
+                "member_counts": member_counts,
+                "my_roles": my_roles,
+            },
+        )
+
+        visible_event_ids = [
+            event.id
+            for event in events
+            if not (
+                event.capsule_release_at
+                and event.capsule_release_at > timezone.now()
+                and str(event.owner.id) != str(request.user.id)
+            )
+        ]
+        photo_summaries = Photo._get_collection().aggregate([
+            {"$match": {"event": {"$in": visible_event_ids}}},
+            {"$sort": {"event": 1, "taken_at": -1, "created_at": -1}},
+            {
+                "$group": {
+                    "_id": "$event",
+                    "photo_count": {"$sum": 1},
+                    "cover_path": {"$first": "$medium_preview"},
+                },
+            },
+        ])
+        summaries = {
+            str(summary["_id"]): {
+                "photo_count": summary["photo_count"],
+                "cover_photo_url": f"{settings.MEDIA_URL}{summary['cover_path']}",
+            }
+            for summary in photo_summaries
+        }
+        data = serializer.data
+        for event_data in data:
+            summary = summaries.get(event_data["id"], {})
+            event_data["photo_count"] = summary.get("photo_count", 0)
+            event_data["cover_photo_url"] = summary.get("cover_photo_url", "")
+        return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request):
         # Create a new event and automatically make the creator its owner
@@ -99,6 +170,19 @@ class EventDetailView(APIView):
             return Response({"detail": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
 
         self.check_object_permissions(request, event)
+        for photo in list(Photo.objects(event=event)):
+            for comment in list(PhotoComment.objects(photo=photo)):
+                delete_media_file(comment.voice_file)
+                comment.delete()
+            for relative_path in (
+                photo.original_file,
+                photo.thumbnail,
+                photo.medium_preview,
+                photo.voice_note,
+            ):
+                delete_media_file(relative_path)
+            photo.delete()
+
         Membership.objects(event=event).delete()
         event.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -208,3 +292,79 @@ class RegenerateInviteCodeView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class EventContributorsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        event = get_event_or_none(pk)
+        if event is None:
+            return Response({"detail": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
+        if str(event.owner.id) != str(request.user.id):
+            return Response(
+                {"detail": "Only the host can view contributors."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        contributions = {}
+        photo_rows = Photo._get_collection().aggregate([
+            {"$match": {"event": event.id}},
+            {
+                "$group": {
+                    "_id": "$uploader",
+                    "photo_count": {"$sum": 1},
+                    "voice_note_count": {
+                        "$sum": {
+                            "$cond": [
+                                {"$and": [{"$ne": ["$voice_note", None]}, {"$ne": ["$voice_note", ""]}]},
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+                },
+            },
+        ])
+        for row in photo_rows:
+            user_id = str(row["_id"])
+            contributions[user_id] = {
+                "user_id": user_id,
+                "photo_count": row["photo_count"],
+                "voice_note_count": row["voice_note_count"],
+            }
+
+        comment_voice_rows = Photo._get_collection().aggregate([
+            {"$match": {"event": event.id}},
+            {
+                "$lookup": {
+                    "from": PhotoComment._get_collection().name,
+                    "localField": "_id",
+                    "foreignField": "photo",
+                    "as": "comments",
+                },
+            },
+            {"$unwind": "$comments"},
+            {"$match": {"comments.voice_file": {"$nin": [None, ""]}}},
+            {
+                "$group": {
+                    "_id": "$comments.user",
+                    "voice_note_count": {"$sum": 1},
+                },
+            },
+        ])
+        for row in comment_voice_rows:
+            user_id = str(row["_id"])
+            contributions.setdefault(
+                user_id,
+                {"user_id": user_id, "photo_count": 0, "voice_note_count": 0},
+            )
+            contributions[user_id]["voice_note_count"] += row["voice_note_count"]
+
+        users = User.objects(id__in=[ObjectId(user_id) for user_id in contributions])
+        for user in users:
+            contribution = contributions[str(user.id)]
+            contribution["name"] = user.display_name
+            contribution["email"] = user.email
+
+        return Response(list(contributions.values()), status=status.HTTP_200_OK)

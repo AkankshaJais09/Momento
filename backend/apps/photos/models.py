@@ -20,6 +20,10 @@ class Photo(me.Document):
     height = me.IntField(required=True)
     taken_at = me.DateTimeField(required=True)
     size_bytes = me.IntField(required=True)
+    caption = me.StringField(default="", max_length=500)
+    quest = me.StringField(default="", max_length=80)
+    voice_note = me.StringField(null=True, default=None)
+    voice_note_duration = me.FloatField(null=True, default=None)
     created_at = me.DateTimeField(default=datetime.utcnow)
 
     # Legacy fields kept for backward compatibility with initial project skeleton
@@ -32,7 +36,12 @@ class Photo(me.Document):
     meta = {
         "collection": "photos",
         "ordering": ["-taken_at", "-created_at"],
-        "indexes": ["event", "uploader", "event_id"],
+        "indexes": [
+            "event",
+            "uploader",
+            "event_id",
+            {"fields": ["event", "-taken_at", "-created_at"]},
+        ],
     }
 
     def save(self, *args, **kwargs):
@@ -67,7 +76,7 @@ class Photo(me.Document):
         Like.objects(photo=self).delete()
 
         # Clean up local image files on disk when deleting this photo record
-        for rel_path in (self.original_file, self.thumbnail, self.medium_preview):
+        for rel_path in (self.original_file, self.thumbnail, self.medium_preview, self.voice_note):
             if rel_path:
                 full_path = os.path.join(settings.MEDIA_ROOT, rel_path)
                 if os.path.exists(full_path):
@@ -79,6 +88,21 @@ class Photo(me.Document):
 
     def __str__(self):
         return f"Photo {self.id} for Event {self.event_id}"
+
+
+class PhotoComment(me.Document):
+    photo = me.ReferenceField(Photo, required=True, reverse_delete_rule=me.CASCADE)
+    user = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
+    text = me.StringField(default="", max_length=1000)
+    voice_file = me.StringField(null=True, default=None)
+    voice_duration = me.FloatField(null=True, default=None)
+    created_at = me.DateTimeField(default=datetime.utcnow)
+
+    meta = {
+        "collection": "photo_comments",
+        "ordering": ["created_at"],
+        "indexes": ["photo", "user"],
+    }
 
 
 # Like model: Connects a user to a photo they marked as a favorite.

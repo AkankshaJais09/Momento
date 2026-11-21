@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Momento screens preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=DM+Sans:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #faf6f0;
+        --text: #2b2520;
+        --muted: #6b6258;
+        --accent: #a8451f;
+        --border: #d9cfc2;
+        --surface: #ffffff;
+        --shadow: 0 6px 14px rgba(60, 40, 20, 0.18);
+        --sans: 'DM Sans', system-ui, sans-serif;
+        --caption: 'Caveat', cursive;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        background: #e8e0d6;
+        color: var(--text);
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.25rem;
+        font-weight: 700;
+      }
+      .intro {
+        margin: 0 0 24px;
+        color: var(--muted);
+        font-size: 0.9375rem;
+      }
+      .row {
+        display: flex;
+        gap: 20px;
+        overflow-x: auto;
+        padding-bottom: 16px;
+        scroll-snap-type: x mandatory;
+      }
+      .phone {
+        flex: 0 0 280px;
+        width: 280px;
+        height: 560px;
+        background: var(--bg);
+        border-radius: 28px;
+        border: 2px solid #cfc4b6;
+        box-shadow: 0 12px 30px rgba(60, 40, 20, 0.16);
+        overflow: hidden;
+        position: relative;
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
+      }
+      .screen {
+        flex: 1;
+        padding: 20px 16px 72px;
+        overflow: hidden;
+      }
+      .label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin: 0 0 8px;
+      }
+      .headline {
+        font-size: 1.15rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+      .sub {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.4;
+        margin: 0 0 14px;
+      }
+      .cta {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 14px;
+        height: 44px;
+        border: none;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        font-family: var(--sans);
+        font-weight: 700;
+        font-size: 0.85rem;
+      }
+      .polaroid {
+        background: var(--surface);
+        padding: 6px 6px 8px;
+        box-shadow: var(--shadow);
+      }
+      .polaroid .img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+      }
+      .polaroid .cap {
+        font-family: var(--caption);
+        font-size: 0.85rem;
+        text-align: center;
+        margin: 4px 0 0;
+      }
+      .tilt-1 { transform: rotate(-2deg); }
+      .tilt-2 { transform: rotate(1.5deg); }
+      .tilt-3 { transform: rotate(2deg); }
+      .tilt-4 { transform: rotate(-1.5deg); }
+      .field {
+        margin-bottom: 10px;
+      }
+      .field label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+      .input {
+        width: 100%;
+        height: 36px;
+        border: 1.5px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        padding: 0 10px;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+      .swatches { display: flex; gap: 8px; }
+      .swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+      }
+      .swatch.on {
+        box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--text);
+      }
+      .steps { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+      .step { display: flex; gap: 8px; align-items: center; font-size: 0.78rem; font-weight: 500; }
+      .num {
+        width: 20px; height: 20px; border-radius: 50%;
+        background: var(--accent); color: #fff;
+        font-size: 0.7rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .pill {
+        border: 1.5px solid var(--border);
+        border-radius: 999px;
+        background: #fff;
+        padding: 8px 10px;
+        font-size: 0.65rem;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 8px;
+      }
+      .btn-text {
+        display: block;
+        width: 100%;
+        background: none;
+        border: none;
+        color: var(--accent);
+        text-decoration: underline;
+        font-size: 0.75rem;
+        padding: 6px 0;
+        font-family: var(--sans);
+      }
+      .avatars { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      .av {
+        width: 24px; height: 24px; border-radius: 50%;
+        background: var(--accent); color: #fff;
+        font-size: 0.55rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        border: 2px solid var(--bg);
+        margin-left: -6px;
+      }
+      .av:first-child { margin-left: 0; }
+      .wall {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 8px;
+      }
+      .wall > :nth-child(even) { margin-top: 14px; }
+      .thumbs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      .thumb {
+        aspect-ratio: 1;
+        border-radius: 6px;
+        background: #e8d5c4;
+      }
+      .thumb.add {
+        border: 1.5px dashed var(--border);
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 4px;
+      }
+      .row-btns { display: flex; gap: 8px; margin: 10px 0; }
+      .sec {
+        flex: 1;
+        height: 36px;
+        border-radius: 999px;
+        border: 1.5px solid var(--border);
+        background: #fff;
+        font-size: 0.72rem;
+        font-family: var(--sans);
+      }
+      .caption-under {
+        font-size: 0.65rem;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .tag {
+        text-align: center;
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Momento UI — side by side</h1>
+    <p class="intro">Live visual preview of the six screens. Open while the Vite server is running.</p>
+
+    <div class="row" aria-label="Momento screens">
+      <!-- Home -->
+      <div>
+        <div class="phone" aria-label="Home screen">
+          <div class="screen">
+            <p class="label">Momento</p>
+            <h2 class="headline">Every photo from the night, in one place.</h2>
+            <p class="sub">Make a link, share it with your people. They add photos from their phones. No app and no sign-up.</p>
+            <div style="display:flex;justify-content:center;gap:6px;align-items:flex-end;margin:10px 0 14px;">
+              <div class="polaroid tilt-1" style="width:64px"><span class="img" style="background:#c9a88a"></span><p class="cap">dance floor</p></div>
+              <div class="polaroid tilt-2" style="width:74px"><span class="img" style="background:#8fa89a"></span><p class="cap">the toast</p></div>
+              <div class="polaroid tilt-3" style="width:64px"><span class="img" style="background:#d4b5a0"></span><p class="cap">late night</p></div>
+            </div>
+            <div class="steps">
+              <div class="step"><span class="num">1</span>Name your event</div>
+              <div class="step"><span class="num">2</span>Share the link or QR</div>
+              <div class="step"><span class="num">3</span>Watch the wall fill up</div>
+            </div>
+          </div>
+          <button class="cta" type="button">Start a Momento</button>
+        </div>
+        <p class="tag">1 · Home · /</p>
+      </div>
+
+      <!-- Create -->
+      <div>
+        <div class="phone" aria-label="Create event screen">
+          <div class="screen">
+            <p class="label">Step 1 of 2</p>
+            <h2 class="headline">What's the occasion?</h2>
+            <div class="field"><label>Event name</label><div class="input">Saturday night dinner</div></div>
+            <div class="field"><label>When</label><div class="input">22 Nov 2026, 19:00</div></div>
+            <div class="field">
+              <label>Wall colour</label>
+              <div class="swatches">
+                <span class="swatch on" style="background:#faf6f0"></span>
+                <span class="swatch" style="background:#e8d0c4"></span>
+                <span class="swatch" style="background:#c5d1c4"></span>
+                <span class="swatch" style="background:#2b2520"></span>
+              </div>
+            </div>
+            <div class="field"><label>Photos close after</label><div class="input">23 Nov 2026, 23:59</div></div>
+          </div>
+          <button class="cta" type="button">Create my Momento</button>
+        </div>
+        <p class="tag">2 · Create · /create</p>
+      </div>
+
+      <!-- Share -->
+      <div>
+        <div class="phone" aria-label="Share screen">
+          <div class="screen">
+            <p class="label">Step 2 of 2</p>
+            <h2 class="headline">Your Momento is ready</h2>
+            <div style="display:flex;justify-content:center;margin:12px 0;">
+              <div class="polaroid tilt-2" style="width:140px">
+                <span class="img" style="background:
+                  repeating-linear-gradient(0deg,#2b2520 0 2px,transparent 2px 6px),
+                  repeating-linear-gradient(90deg,#2b2520 0 2px,transparent 2px 6px),
+                  #fff; background-size: 12px 12px;"></span>
+                <p class="cap">Saturday night</p>
+              </div>
+            </div>
+            <div class="pill">localhost:5173/events/…?invite=…</div>
+            <button class="cta" type="button" style="position:static;width:100%;margin-bottom:6px;">Copy link</button>
+            <button class="btn-text" type="button">Print QR card</button>
+          </div>
+        </div>
+        <p class="tag">3 · Share · /events/:id/share</p>
+      </div>
+
+      <!-- Gallery -->
+      <div>
+        <div class="phone" aria-label="Gallery screen">
+          <div class="screen">
+            <h2 class="headline" style="font-size:1.05rem">Saturday night dinner</h2>
+            <p class="sub" style="margin-bottom:8px">12 photos so far</p>
+            <div class="avatars">
+              <span class="av">AR</span><span class="av">RS</span><span class="av">NK</span>
+              <span class="caption-under" style="margin:0">Arjun, Riya and 7 others…</span>
+            </div>
+            <div class="wall">
+              <div class="polaroid tilt-1"><span class="img" style="background:#c9a88a"></span><p class="cap">toast – Arjun</p></div>
+              <div class="polaroid tilt-2"><span class="img" style="background:#8fa89a"></span><p class="cap">cake – Riya</p></div>
+              <div class="polaroid tilt-3"><span class="img" style="background:#d4b5a0"></span><p class="cap">group – Neha</p></div>
+              <div class="polaroid tilt-4"><span class="img" style="background:#b7c4b0"></span><p class="cap">door – Kabir</p></div>
+            </div>
+          </div>
+          <button class="cta" type="button">Add your photos</button>
+        </div>
+        <p class="tag">4 · Gallery · /events/:id</p>
+      </div>
+
+      <!-- Upload -->
+      <div>
+        <div class="phone" aria-label="Guest upload screen">
+          <div class="screen">
+            <h2 class="headline">Add your moments</h2>
+            <div class="field"><label>What's your name?</label><div class="input">Your name</div></div>
+            <div class="thumbs">
+              <div class="thumb" style="background:#c9a88a"></div>
+              <div class="thumb" style="background:#8fa89a"></div>
+              <div class="thumb" style="background:#d4b5a0"></div>
+              <div class="thumb add">+ Add more</div>
+            </div>
+          </div>
+          <button class="cta" type="button">Share 3 photos</button>
+        </div>
+        <p class="tag">5 · Upload · /events/:id/upload</p>
+      </div>
+
+      <!-- Photo view -->
+      <div>
+        <div class="phone" aria-label="Photo view screen">
+          <div class="screen">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:0.8rem;">
+              <span>← Back</span>
+              <span class="caption-under" style="margin:0">12 of 42</span>
+            </div>
+            <div style="display:flex;justify-content:center;margin-bottom:10px;">
+              <div class="polaroid tilt-1" style="width:160px">
+                <span class="img" style="background:#c9a88a"></span>
+                <p class="cap">toast – Arjun</p>
+              </div>
+            </div>
+            <div class="row-btns">
+              <button class="sec" type="button">♥ 18</button>
+              <button class="sec" type="button">Download</button>
+            </div>
+            <div class="field">
+              <label>Say something</label>
+              <div class="input" style="height:56px;padding-top:8px;">Leave a note about this photo</div>
+            </div>
+          </div>
+        </div>
+        <p class="tag">6 · Photo · /events/:id/photos/:id</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -62,12 +62,32 @@ class TestRegistration:
         assert response.data["user"]["email"] == "newuser@example.com"
         assert response.data["user"]["display_name"] == "New User"
         assert "id" in response.data["user"]
+        assert response.data["user"]["email"] == "newuser@example.com"
+        assert "momento_id" not in response.data["user"]
 
         # Ensure user exists in database with hashed password
         created = User.objects(email="newuser@example.com").first()
         assert created is not None
+        assert "momento_id" not in User._fields
         assert created.check_password("ValidPass123") is True
         assert created.password != "ValidPass123"
+
+    def test_existing_record_with_legacy_id_still_loads(self):
+        from bson import ObjectId
+
+        legacy_id = ObjectId()
+        User._get_collection().insert_one({
+            "_id": legacy_id,
+            "email": "legacy@example.com",
+            "display_name": "Legacy User",
+            "momento_id": "MMT-1234",
+            "password": "hashed",
+        })
+
+        loaded = User.objects(id=legacy_id).first()
+
+        assert loaded is not None
+        assert loaded.email == "legacy@example.com"
 
     def test_register_duplicate_email(self, client, registered_user):
         payload = {

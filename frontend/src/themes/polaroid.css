@@ -1,0 +1,100 @@
+:root,
+[data-theme='polaroid'] {
+  color-scheme: light;
+  --color-bg: #faf6f0;
+  --color-text: #2b2520;
+  --color-text-muted: #6b6258;
+  --color-accent: #a8451f;
+  --color-accent-fg: #ffffff;
+  --color-accent-hover: #8f3a1a;
+  --color-border: #d9cfc2;
+  --color-border-focus: #a8451f;
+  --color-surface: #ffffff;
+  --color-bg-muted: #f0ebe3;
+  --color-danger: #a8451f;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-caption: 'Caveat', cursive;
+  --font-heading: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'DM Sans', system-ui, sans-serif;
+  --font-ui-weight-regular: 400;
+  --font-ui-weight-medium: 500;
+  --font-ui-weight-bold: 700;
+  --font-caption-weight: 500;
+  --label-size: 13px;
+  --label-weight: 500;
+  --label-tracking: 0.06em;
+  --input-font-size: 16px;
+  --shell-padding-x: 20px;
+  --shell-padding-top: 24px;
+  --btn-side-margin: 20px;
+  --btn-bottom-offset: 20px;
+  --btn-height: 56px;
+  --input-height: 52px;
+  --input-radius: 14px;
+  --input-border-width: 1.5px;
+  --radius-pill: 9999px;
+  --button-radius: 9999px;
+  --polaroid-bg: #ffffff;
+  --polaroid-padding: 8px 8px 10px;
+  --polaroid-shadow: 0 6px 14px rgba(60, 40, 20, 0.18);
+  --polaroid-tilt-1: -2deg;
+  --polaroid-tilt-2: 1.5deg;
+  --polaroid-tilt-3: 2deg;
+  --polaroid-tilt-4: -1.5deg;
+  --swatch-peach: #f3c9a8;
+  --swatch-sage: #c9d9c0;
+  --swatch-lilac: #e8d2e6;
+  --swatch-sky: #c6d8ec;
+  --swatch-butter: #f3d58a;
+  --swatch-rose: #e7b7c8;
+  --swatch-mint: #bfe3d6;
+  --swatch-sand: #d9cbb4;
+  --placeholder-1: #c9a88a;
+  --placeholder-2: #8fa89a;
+  --placeholder-3: #d4b5a0;
+  --wall-columns: 2;
+  --wall-gap: 16px 12px;
+}
+
+[data-theme='film'] {
+  color-scheme: dark;
+  --color-bg: #1c1a18;
+  --color-text: #f2ebe0;
+  --color-text-muted: #b5aa9b;
+  --color-accent: #e8743b;
+  --color-accent-fg: #1c1a18;
+  --color-accent-hover: #f28a55;
+  --color-border: #54483d;
+  --color-border-focus: #e8743b;
+  --color-surface: #292521;
+  --color-bg-muted: #35302a;
+  --color-danger: #e8743b;
+  --font-heading: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --button-radius: 8px;
+  --radius-pill: 8px;
+  --btn-height: 52px;
+  --polaroid-bg: #2a2520;
+  --polaroid-padding: 6px;
+  --polaroid-shadow: none;
+  --polaroid-tilt-1: 0deg;
+  --polaroid-tilt-2: 0deg;
+  --polaroid-tilt-3: 0deg;
+  --polaroid-tilt-4: 0deg;
+  --wall-columns: 3;
+  --wall-gap: 4px;
+}
+
+@media (min-width: 900px) {
+  [data-theme='polaroid'] {
+    --wall-columns: 3;
+    --wall-gap: 24px 18px;
+  }
+}
+
+@media (min-width: 1200px) {
+  [data-theme='polaroid'] {
+    --wall-columns: 4;
+    --wall-gap: 24px 20px;
+  }
+}

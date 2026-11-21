@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from apps.events.models import Event, Membership
 
 
@@ -11,6 +12,13 @@ class EventSerializer(serializers.Serializer):
     start_date = serializers.DateTimeField(required=False, allow_null=True, default=None)
     end_date = serializers.DateTimeField(required=False, allow_null=True, default=None)
     cover_photo = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
+    wall_style = serializers.ChoiceField(choices=Event.WALL_STYLES, read_only=True)
+    wall_color = serializers.ChoiceField(choices=Event.WALL_COLORS, read_only=True)
+    time_capsule = serializers.ChoiceField(choices=Event.TIME_CAPSULES, read_only=True)
+    capsule_release_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    capsule_locked = serializers.SerializerMethodField()
+    voice_notes_enabled = serializers.BooleanField(read_only=True)
+    uploads_closed = serializers.BooleanField(read_only=True)
     owner = serializers.SerializerMethodField()
     invite_code = serializers.CharField(read_only=True)
     member_count = serializers.SerializerMethodField()
@@ -21,16 +29,34 @@ class EventSerializer(serializers.Serializer):
     def get_owner(self, obj):
         if not obj.owner:
             return None
-        return {
+        owner = {
             "id": str(obj.owner.id),
-            "email": obj.owner.email,
             "display_name": getattr(obj.owner, "display_name", ""),
         }
+        request = self.context.get("request")
+        if (
+            request
+            and getattr(request, "user", None)
+            and request.user.is_authenticated
+            and str(request.user.id) == str(obj.owner.id)
+        ):
+            owner["email"] = obj.owner.email
+        return owner
+
+    def get_capsule_locked(self, obj):
+        release_at = obj.capsule_release_at
+        return bool(release_at and release_at > timezone.now())
 
     def get_member_count(self, obj):
+        counts = self.context.get("member_counts")
+        if counts is not None:
+            return counts.get(str(obj.id), 0)
         return Membership.objects(event=obj).count()
 
     def get_my_role(self, obj):
+        roles = self.context.get("my_roles")
+        if roles is not None:
+            return roles.get(str(obj.id))
         request = self.context.get("request")
         if request and getattr(request, "user", None) and request.user.is_authenticated:
             membership = Membership.objects(user=request.user, event=obj).first()
@@ -53,6 +79,11 @@ class EventCreateUpdateSerializer(serializers.Serializer):
     start_date = serializers.DateTimeField(required=False, allow_null=True, default=None)
     end_date = serializers.DateTimeField(required=False, allow_null=True, default=None)
     cover_photo = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
+    wall_style = serializers.ChoiceField(choices=Event.WALL_STYLES, required=False)
+    wall_color = serializers.ChoiceField(choices=Event.WALL_COLORS, required=False)
+    time_capsule = serializers.ChoiceField(choices=Event.TIME_CAPSULES, required=False)
+    voice_notes_enabled = serializers.BooleanField(required=False)
+    uploads_closed = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         start_date = attrs.get("start_date")
@@ -69,6 +100,10 @@ class EventCreateUpdateSerializer(serializers.Serializer):
             start_date=validated_data.get("start_date"),
             end_date=validated_data.get("end_date"),
             cover_photo=validated_data.get("cover_photo"),
+            wall_style=validated_data.get("wall_style", "polaroid"),
+            wall_color=validated_data.get("wall_color", "#F3C9A8"),
+            time_capsule=validated_data.get("time_capsule", "live"),
+            voice_notes_enabled=validated_data.get("voice_notes_enabled", True),
             owner=user,
             invite_code=Event.generate_invite_code(),
         )
@@ -93,6 +128,9 @@ class EventCreateUpdateSerializer(serializers.Serializer):
             instance.end_date = validated_data["end_date"]
         if "cover_photo" in validated_data:
             instance.cover_photo = validated_data["cover_photo"]
+        for field in ("wall_style", "wall_color", "time_capsule", "voice_notes_enabled", "uploads_closed"):
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
         instance.save()
         return instance
 

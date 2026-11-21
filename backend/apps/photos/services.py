@@ -19,7 +19,7 @@ def validate_photo_file(file):
     max_size = getattr(settings, "MAX_PHOTO_SIZE_BYTES", 25 * 1024 * 1024)
     if file.size > max_size:
         raise serializers.ValidationError(
-            f"File '{file.name}' exceeds the maximum allowed size of 25MB."
+            "The selected image exceeds the maximum allowed size of 25MB."
         )
 
     try:
@@ -29,12 +29,12 @@ def validate_photo_file(file):
         file.seek(0)
     except Exception:
         raise serializers.ValidationError(
-            f"File '{file.name}' is not a valid or supported image file."
+            "The selected file is not a valid or supported image."
         )
 
     if not img_format or img_format.upper() not in ALLOWED_FORMATS:
         raise serializers.ValidationError(
-            f"File '{file.name}' is not a supported image format. Supported formats are JPEG, PNG and WebP."
+            "The selected image format is not supported. Use JPEG, PNG or WebP."
         )
 
 
@@ -50,42 +50,57 @@ def get_taken_at(img):
     return datetime.utcnow()
 
 
-def process_and_save_photo(file, event, uploader):
-    """Save original photo locally and generate thumbnail and medium previews."""
-    file.seek(0)
-    raw_bytes = file.read()
-    size_bytes = len(raw_bytes)
+def save_voice_note(file, event):
+    content_type = getattr(file, "content_type", "").split(";", 1)[0].lower()
+    extension = {
+        "audio/webm": ".weba",
+        "audio/mp4": ".m4a",
+        "audio/ogg": ".ogg",
+        "audio/wav": ".wav",
+    }.get(content_type, ".weba")
+    filename = f"momento-{event.id}-{secrets.token_hex(3)}{extension}"
+    relative_path = os.path.join("voice-notes", str(event.id), filename)
+    full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "wb") as target:
+        for chunk in file.chunks():
+            target.write(chunk)
+    return relative_path.replace(os.sep, "/")
 
-    # Open image with Pillow to read size and metadata
+
+def process_and_save_photo(
+    file,
+    event,
+    uploader,
+    caption="",
+    quest="",
+    voice_note_path=None,
+    voice_note_duration=None,
+):
+    """Re-encode photos and create previews without retaining source metadata."""
     file.seek(0)
     image = Image.open(file)
     taken_at = get_taken_at(image)
 
-    # Rotate image according to EXIF orientation tag if present
     oriented = ImageOps.exif_transpose(image) or image
     width, height = oriented.size
 
-    # Choose a unique filename to avoid overwriting existing files
-    ext = os.path.splitext(file.name)[1].lower() or ".jpg"
-    unique_name = secrets.token_hex(8)
+    filename = f"momento-{event.id}-{secrets.token_hex(3)}.jpg"
+    unique_name = os.path.splitext(filename)[0]
+    original_directory = os.path.join(settings.MEDIA_ROOT, "photos", str(event.id), "original")
+    orig_full_path = os.path.join(original_directory, filename)
+    os.makedirs(original_directory, exist_ok=True)
+    preview_img = oriented.convert("RGB")
+    preview_img.save(orig_full_path, format="JPEG", quality=92)
+    size_bytes = os.path.getsize(orig_full_path)
+    orig_rel_path = f"photos/{event.id}/original/{filename}"
 
-    # 1. Save untouched original file in media/photos/<event_id>/original/
-    orig_dir = os.path.join(settings.MEDIA_ROOT, "photos", str(event.id), "original")
-    os.makedirs(orig_dir, exist_ok=True)
-    orig_full_path = os.path.join(orig_dir, f"{unique_name}{ext}")
-    with open(orig_full_path, "wb") as f:
-        f.write(raw_bytes)
-    orig_rel_path = f"photos/{event.id}/original/{unique_name}{ext}"
-
-    # Convert to RGB for saving previews as JPEG
-    preview_img = oriented.convert("RGB") if oriented.mode != "RGB" else oriented.copy()
-
-    # 2. Save medium preview (max 1600x1600)
+    # Save local previews using the same private, generated base name.
     medium_dir = os.path.join(settings.MEDIA_ROOT, "photos", str(event.id), "medium")
     os.makedirs(medium_dir, exist_ok=True)
     medium_full_path = os.path.join(medium_dir, f"{unique_name}.jpg")
     medium = preview_img.copy()
-    medium.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+    medium.thumbnail((800, 800), Image.Resampling.LANCZOS)
     medium.save(medium_full_path, format="JPEG", quality=85)
     medium_rel_path = f"photos/{event.id}/medium/{unique_name}.jpg"
 
@@ -109,7 +124,11 @@ def process_and_save_photo(file, event, uploader):
         height=height,
         taken_at=taken_at,
         size_bytes=size_bytes,
-        original_filename=file.name or f"{unique_name}{ext}",
+        caption=caption,
+        quest=quest,
+        voice_note=voice_note_path,
+        voice_note_duration=voice_note_duration,
+        original_filename=filename,
     )
     photo.save()
     return photo

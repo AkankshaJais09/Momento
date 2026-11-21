@@ -23,6 +23,7 @@ class User(me.Document):
         "collection": "users",
         "ordering": ["-created_at"],
         "indexes": ["email"],
+        "strict": False,
     }
 
     def save(self, *args, **kwargs):

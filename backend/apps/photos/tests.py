@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import io
+import mimetypes
 import os
 import mongoengine
 import mongomock
@@ -15,7 +16,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import User
 from apps.events.models import Event, Membership
-from apps.photos.models import Photo, Like
+from apps.photos.models import Photo, Like, PhotoComment
+from apps.photos.services import save_voice_note
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +27,7 @@ def setup_test_db(tmp_path):
     mongoengine.connect("test_photos_db", host="localhost", mongo_client_class=mongomock.MongoClient)
     Photo.drop_collection()
     Like.drop_collection()
+    PhotoComment.drop_collection()
     Event.drop_collection()
     Membership.drop_collection()
     User.drop_collection()
@@ -38,6 +41,7 @@ def setup_test_db(tmp_path):
     settings.MEDIA_ROOT = old_media_root
     Photo.drop_collection()
     Like.drop_collection()
+    PhotoComment.drop_collection()
     Event.drop_collection()
     Membership.drop_collection()
     User.drop_collection()
@@ -77,6 +81,9 @@ class TestPhotoModelBasics:
         assert "event_id" in Photo._fields
         assert "file_path" in Photo._fields
         assert "original_filename" in Photo._fields
+        assert "caption" in Photo._fields
+        assert "quest" in Photo._fields
+        assert "voice_note" in Photo._fields
         assert "uploaded_at" in Photo._fields
 
         # Main Photo fields
@@ -97,6 +104,24 @@ class TestPhotoModelBasics:
         assert "created_at" in Like._fields
 
 
+class TestVoiceNoteStorage:
+    def test_webm_voice_note_uses_audio_mime_extension_and_generated_name(self):
+        owner = create_user()
+        event = Event(name="Voice note", owner=owner).save()
+        recording = SimpleUploadedFile(
+            "recording.webm",
+            b"voice recording",
+            content_type="audio/webm;codecs=opus",
+        )
+
+        relative_path = save_voice_note(recording, event)
+
+        assert relative_path.startswith(f"voice-notes/{event.id}/momento-{event.id}-")
+        assert relative_path.endswith(".weba")
+        with open(os.path.join(settings.MEDIA_ROOT, relative_path), "rb") as saved:
+            assert saved.read() == b"voice recording"
+
+
 class TestPhotoUploadSuccess:
     def test_valid_photo_upload_single_file(self):
         owner = create_user("owner@example.com")
@@ -105,8 +130,6 @@ class TestPhotoUploadSuccess:
 
         client = auth_client_for(owner)
         img_file = make_image_file("vacation.jpg", "JPEG", size=(800, 600))
-        raw_bytes = img_file.read()
-        img_file.seek(0)
 
         response = client.post(
             f"/api/events/{event.id}/photos/",
@@ -119,7 +142,7 @@ class TestPhotoUploadSuccess:
 
         assert photo_data["width"] == 800
         assert photo_data["height"] == 600
-        assert photo_data["size_bytes"] == len(raw_bytes)
+        assert photo_data["size_bytes"] > 0
         assert photo_data["like_count"] == 0
         assert photo_data["liked_by_me"] is False
         assert "original_url" in photo_data
@@ -132,17 +155,38 @@ class TestPhotoUploadSuccess:
         assert photo.event.id == event.id
         assert photo.uploader.id == owner.id
 
-        # Verify untouched original file exists in local media folder
+        # Verify the original is re-encoded with a generated private name.
         orig_full_path = os.path.join(settings.MEDIA_ROOT, photo.original_file)
         assert os.path.exists(orig_full_path)
-        with open(orig_full_path, "rb") as f:
-            assert f.read() == raw_bytes
+        assert photo.original_filename.startswith(f"momento-{event.id}-")
+        assert len(photo.original_filename.removeprefix(f"momento-{event.id}-").removesuffix(".jpg")) == 6
+        with Image.open(orig_full_path) as saved_image:
+            assert saved_image.format == "JPEG"
+            assert not saved_image.getexif()
 
         # Verify thumbnail and medium preview files exist on disk
         thumb_full_path = os.path.join(settings.MEDIA_ROOT, photo.thumbnail)
         medium_full_path = os.path.join(settings.MEDIA_ROOT, photo.medium_preview)
         assert os.path.exists(thumb_full_path)
         assert os.path.exists(medium_full_path)
+
+    def test_medium_preview_is_capped_at_800px_without_shrinking_original(self):
+        owner = create_user("owner@example.com")
+        event = Event(name="Preview size", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+
+        response = auth_client_for(owner).post(
+            f"/api/events/{event.id}/photos/",
+            {"files": [make_image_file(size=(2400, 1600))]},
+            format="multipart",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        photo = Photo.objects.first()
+        with Image.open(os.path.join(settings.MEDIA_ROOT, photo.original_file)) as original:
+            assert original.size == (2400, 1600)
+        with Image.open(os.path.join(settings.MEDIA_ROOT, photo.medium_preview)) as preview:
+            assert preview.size == (800, 533)
 
     def test_valid_photo_upload_multiple_files(self):
         owner = create_user("owner@example.com")
@@ -163,6 +207,104 @@ class TestPhotoUploadSuccess:
         assert len(response.data) == 3
         assert Photo.objects.count() == 3
 
+    def test_voice_note_upload_is_saved_and_returned_with_audio_url(self):
+        owner = create_user("owner@example.com")
+        event = Event(name="Voice upload", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+        client = auth_client_for(owner)
+
+        response = client.post(
+            f"/api/events/{event.id}/photos/",
+            {
+                "files": [make_image_file()],
+                "voice_note": SimpleUploadedFile(
+                    "voice-note.webm",
+                    b"recorded audio",
+                    content_type="audio/webm;codecs=opus",
+                ),
+                "voice_note_duration": "4",
+            },
+            format="multipart",
+        )
+
+        photo = Photo.objects.first()
+        assert response.status_code == status.HTTP_201_CREATED
+        assert photo.voice_note.endswith(".weba")
+        assert response.data[0]["voice_note_url"].endswith(photo.voice_note)
+        with open(os.path.join(settings.MEDIA_ROOT, photo.voice_note), "rb") as saved:
+            assert saved.read() == b"recorded audio"
+        assert mimetypes.guess_type(photo.voice_note)[0] == "audio/webm"
+
+
+class TestPhotoIdentityPrivacy:
+    def test_photo_email_is_visible_to_host_and_uploader_only(self):
+        owner = create_user("owner@example.com", "Host")
+        uploader = create_user("uploader@example.com", "Uploader")
+        guest = create_user("guest@example.com", "Guest")
+        event = Event(name="Private emails", owner=owner).save()
+        for user, role in (
+            (owner, Membership.ROLE_OWNER),
+            (uploader, Membership.ROLE_MEMBER),
+            (guest, Membership.ROLE_MEMBER),
+        ):
+            Membership(user=user, event=event, role=role).save()
+        Photo(
+            event=event,
+            uploader=uploader,
+            original_file="photo.jpg",
+            thumbnail="photo-thumbnail.jpg",
+            medium_preview="photo-preview.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime.utcnow(),
+            size_bytes=100,
+        ).save()
+
+        host_photo = auth_client_for(owner).get(f"/api/events/{event.id}/photos/").data["results"][0]
+        uploader_photo = auth_client_for(uploader).get(f"/api/events/{event.id}/photos/").data["results"][0]
+        guest_photo = auth_client_for(guest).get(f"/api/events/{event.id}/photos/").data["results"][0]
+
+        assert host_photo["uploader"]["email"] == uploader.email
+        assert uploader_photo["uploader"]["email"] == uploader.email
+        assert "email" not in guest_photo["uploader"]
+
+    def test_comment_send_saves_name_and_hides_email_from_other_guests(self):
+        owner = create_user("owner@example.com", "Host")
+        author = create_user("author@example.com", "Comment Author")
+        guest = create_user("guest@example.com", "Guest")
+        event = Event(name="Comments", owner=owner).save()
+        for user, role in (
+            (owner, Membership.ROLE_OWNER),
+            (author, Membership.ROLE_MEMBER),
+            (guest, Membership.ROLE_MEMBER),
+        ):
+            Membership(user=user, event=event, role=role).save()
+        photo = Photo(
+            event=event,
+            uploader=author,
+            original_file="photo.jpg",
+            thumbnail="photo-thumbnail.jpg",
+            medium_preview="photo-preview.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime.utcnow(),
+            size_bytes=100,
+        ).save()
+
+        author_response = auth_client_for(author).post(
+            f"/api/photos/{photo.id}/comments/",
+            {"text": "A lovely moment"},
+            format="json",
+        )
+        guest_response = auth_client_for(guest).get(f"/api/photos/{photo.id}/comments/")
+        host_response = auth_client_for(owner).get(f"/api/photos/{photo.id}/comments/")
+
+        assert author_response.status_code == status.HTTP_201_CREATED
+        assert author_response.data["user"]["display_name"] == author.display_name
+        assert author_response.data["user"]["email"] == author.email
+        assert "email" not in guest_response.data[0]["user"]
+        assert host_response.data[0]["user"]["email"] == author.email
+
 
 class TestPhotoUploadValidation:
     def test_invalid_file_format_rejected(self):
@@ -179,7 +321,7 @@ class TestPhotoUploadValidation:
             format="multipart",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "not a valid or supported image file" in str(response.data).lower() or "supported formats" in str(response.data).lower()
+        assert "not a valid or supported image" in str(response.data).lower() or "supported" in str(response.data).lower()
 
     def test_corrupted_image_file_rejected(self):
         owner = create_user("owner@example.com")
@@ -195,7 +337,7 @@ class TestPhotoUploadValidation:
             format="multipart",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "not a valid or supported image file" in str(response.data).lower()
+        assert "not a valid or supported image" in str(response.data).lower()
 
     @override_settings(MAX_PHOTO_SIZE_BYTES=500)
     def test_oversized_file_rejected(self):
@@ -265,6 +407,72 @@ class TestPhotoPaginationAndOrdering:
         res_p2 = client.get(f"/api/events/{event.id}/photos/?page=2")
         assert res_p2.status_code == status.HTTP_200_OK
         assert len(res_p2.data["results"]) == 5
+
+    def test_photo_detail_returns_single_photo_and_position(self):
+        owner = create_user("owner@example.com")
+        event = Event(name="Photo detail", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+        base_time = datetime(2026, 11, 10, 10, 0, 0)
+        photos = [
+            Photo(
+                event=event,
+                uploader=owner,
+                original_file=f"original-{index}.jpg",
+                thumbnail=f"thumbnail-{index}.jpg",
+                medium_preview=f"preview-{index}.jpg",
+                width=100,
+                height=100,
+                taken_at=base_time + timedelta(hours=index),
+                size_bytes=100,
+            ).save()
+            for index in range(3)
+        ]
+
+        response = auth_client_for(owner).get(f"/api/photos/{photos[1].id}/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == str(photos[1].id)
+        assert response.data["position"] == 2
+        assert response.data["event_photo_count"] == 3
+
+    def test_photo_list_includes_aggregated_like_and_comment_counts(self):
+        owner = create_user("owner@example.com")
+        guest = create_user("guest@example.com")
+        event = Event(name="Photo counts", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+        Membership(user=guest, event=event, role=Membership.ROLE_MEMBER).save()
+        first = Photo(
+            event=event,
+            uploader=guest,
+            original_file="first.jpg",
+            thumbnail="first-thumb.jpg",
+            medium_preview="first-preview.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime(2026, 11, 10, 10, 0, 0),
+            size_bytes=100,
+        ).save()
+        Photo(
+            event=event,
+            uploader=guest,
+            original_file="second.jpg",
+            thumbnail="second-thumb.jpg",
+            medium_preview="second-preview.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime(2026, 11, 10, 11, 0, 0),
+            size_bytes=100,
+        ).save()
+        Like(user=owner, photo=first).save()
+        PhotoComment(photo=first, user=guest, text="Lovely moment").save()
+
+        response = auth_client_for(owner).get(f"/api/events/{event.id}/photos/")
+        by_id = {photo["id"]: photo for photo in response.data["results"]}
+
+        assert response.status_code == status.HTTP_200_OK
+        assert by_id[str(first.id)]["like_count"] == 1
+        assert by_id[str(first.id)]["liked_by_me"] is True
+        assert by_id[str(first.id)]["comment_count"] == 1
 
 
 class TestPhotoFilters:
@@ -574,3 +782,53 @@ class TestPhotoDeletion:
         del_res = client_b.delete(f"/api/photos/{photo_a.id}/")
         assert del_res.status_code == status.HTTP_403_FORBIDDEN
         assert Photo.objects(id=photo_a.id).first() is not None
+
+
+class TestEventDeletionCleanup:
+    def test_owner_deletion_removes_event_photos_comments_and_media(self):
+        owner = create_user("owner@example.com")
+        event = Event(name="Delete this event", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+
+        relative_paths = [
+            f"photos/{event.id}/original/photo.jpg",
+            f"photos/{event.id}/thumbnail/photo.jpg",
+            f"photos/{event.id}/medium/photo.jpg",
+            f"voice-notes/{event.id}/photo.weba",
+            f"voice-notes/{event.id}/comment.weba",
+        ]
+        for relative_path in relative_paths:
+            file_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, "wb") as saved_file:
+                saved_file.write(b"event media")
+
+        photo = Photo(
+            event=event,
+            uploader=owner,
+            original_file=relative_paths[0],
+            thumbnail=relative_paths[1],
+            medium_preview=relative_paths[2],
+            voice_note=relative_paths[3],
+            width=100,
+            height=100,
+            taken_at=datetime.utcnow(),
+            size_bytes=100,
+        ).save()
+        Like(user=owner, photo=photo).save()
+        PhotoComment(
+            photo=photo,
+            user=owner,
+            text="A comment",
+            voice_file=relative_paths[4],
+        ).save()
+
+        response = auth_client_for(owner).delete(f"/api/events/{event.id}/")
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert Event.objects(id=event.id).first() is None
+        assert Membership.objects(event=event).count() == 0
+        assert Photo.objects(event=event).count() == 0
+        assert PhotoComment.objects(photo=photo).count() == 0
+        assert Like.objects(photo=photo).count() == 0
+        assert all(not os.path.exists(os.path.join(settings.MEDIA_ROOT, path)) for path in relative_paths)

@@ -9,6 +9,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import User
 from apps.events.models import Event, Membership
+from apps.photos.models import Photo, PhotoComment
 
 
 @pytest.fixture(autouse=True)
@@ -18,11 +19,15 @@ def setup_test_db():
     mongoengine.connect("test_events_db", host="localhost", mongo_client_class=mongomock.MongoClient)
     Event.drop_collection()
     Membership.drop_collection()
+    Photo.drop_collection()
+    PhotoComment.drop_collection()
     User.drop_collection()
     cache.clear()
     yield
     Event.drop_collection()
     Membership.drop_collection()
+    Photo.drop_collection()
+    PhotoComment.drop_collection()
     User.drop_collection()
     cache.clear()
     mongoengine.disconnect()
@@ -57,6 +62,11 @@ class TestEventModelBasics:
         assert "start_date" in Event._fields
         assert "end_date" in Event._fields
         assert "cover_photo" in Event._fields
+        assert "wall_style" in Event._fields
+        assert "wall_color" in Event._fields
+        assert "time_capsule" in Event._fields
+        assert "voice_notes_enabled" in Event._fields
+        assert "uploads_closed" in Event._fields
         assert "owner" in Event._fields
         assert "invite_code" in Event._fields
         assert "created_at" in Event._fields
@@ -90,6 +100,9 @@ class TestEventCreate:
         assert response.data["my_role"] == "owner"
         assert response.data["member_count"] == 1
         assert len(response.data["invite_code"]) >= 20
+        assert response.data["wall_style"] == "polaroid"
+        assert response.data["wall_color"] == "#F3C9A8"
+        assert response.data["time_capsule"] == "live"
 
         # Verify database documents
         event = Event.objects(name="Trip to Kyoto").first()
@@ -117,6 +130,37 @@ class TestEventCreate:
         response = client.post("/api/events/", payload, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "end_date" in response.data
+
+    def test_create_event_persists_wall_options(self):
+        owner = create_user("owner@example.com")
+        client = auth_client_for(owner)
+        response = client.post(
+            "/api/events/",
+            {
+                "name": "Capsule",
+                "wall_style": "film",
+                "wall_color": "#C9D9C0",
+                "time_capsule": "next_morning",
+                "voice_notes_enabled": False,
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["wall_style"] == "film"
+        assert response.data["wall_color"] == "#C9D9C0"
+        assert response.data["time_capsule"] == "next_morning"
+        assert response.data["voice_notes_enabled"] is False
+
+    def test_create_event_rejects_unlisted_wall_color(self):
+        owner = create_user("owner@example.com")
+        client = auth_client_for(owner)
+        response = client.post(
+            "/api/events/",
+            {"name": "Invalid color", "wall_color": "#000000"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "wall_color" in response.data
 
 
 class TestEventListMyEvents:
@@ -159,6 +203,66 @@ class TestEventListMyEvents:
         assert event1_id in ids_b_after
         assert event2_id in ids_b_after
 
+    def test_event_list_includes_photo_summary_without_separate_photo_requests(self):
+        owner = create_user("owner@example.com")
+        event = Event(name="Photo summary", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+        Photo(
+            event=event,
+            uploader=owner,
+            original_file="photos/original.jpg",
+            thumbnail="photos/thumbnail.jpg",
+            medium_preview="photos/preview.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime(2026, 11, 10, 10, 0, 0),
+            size_bytes=100,
+        ).save()
+
+        response = auth_client_for(owner).get("/api/events/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data[0]["photo_count"] == 1
+        assert response.data[0]["cover_photo_url"].endswith("photos/preview.jpg")
+        assert response.data[0]["member_count"] == 1
+        assert response.data[0]["my_role"] == "owner"
+
+    def test_contributors_include_photo_and_comment_voice_notes(self):
+        owner = create_user("owner@example.com", "Host")
+        guest = create_user("guest@example.com", "Guest")
+        event = Event(name="Contributors", owner=owner).save()
+        Membership(user=owner, event=event, role=Membership.ROLE_OWNER).save()
+        Membership(user=guest, event=event, role=Membership.ROLE_MEMBER).save()
+        photo = Photo(
+            event=event,
+            uploader=guest,
+            original_file="original.jpg",
+            thumbnail="thumbnail.jpg",
+            medium_preview="preview.jpg",
+            width=100,
+            height=100,
+            taken_at=datetime(2026, 11, 10, 10, 0, 0),
+            size_bytes=100,
+            voice_note="voice/photo.webm",
+        ).save()
+        PhotoComment(
+            photo=photo,
+            user=guest,
+            text="A comment",
+            voice_file="voice/comment.webm",
+        ).save()
+
+        response = auth_client_for(owner).get(f"/api/events/{event.id}/contributors/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == [{
+            "user_id": str(guest.id),
+            "photo_count": 1,
+            "voice_note_count": 2,
+            "name": guest.display_name,
+            "email": guest.email,
+        }]
+
     def test_list_events_unauthenticated(self):
         client = APIClient()
         response = client.get("/api/events/")
@@ -192,6 +296,7 @@ class TestEventRetrievePermissions:
         assert get_res.status_code == status.HTTP_200_OK
         assert get_res.data["name"] == "Shared Trip"
         assert get_res.data["my_role"] == "member"
+        assert "email" not in get_res.data["owner"]
 
     def test_retrieve_event_as_non_member_returns_403(self):
         owner = create_user("owner@example.com")
@@ -284,6 +389,7 @@ class TestEventDeletePermissions:
 
         del_res = client_member.delete(f"/api/events/{event_id}/")
         assert del_res.status_code == status.HTTP_403_FORBIDDEN
+        assert del_res.data["detail"] == "Only the event owner can perform this action."
         assert Event.objects(id=event_id).first() is not None
 
     def test_delete_event_as_non_member_returns_403(self):
@@ -297,6 +403,7 @@ class TestEventDeletePermissions:
 
         del_res = client_outsider.delete(f"/api/events/{event_id}/")
         assert del_res.status_code == status.HTTP_403_FORBIDDEN
+        assert del_res.data["detail"] == "Only the event owner can perform this action."
 
 
 class TestJoinEvent:
