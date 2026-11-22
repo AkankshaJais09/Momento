@@ -73,6 +73,22 @@ async function refreshAccessToken() {
   return refreshPromise
 }
 
+function readableError(data) {
+  if (!data) return 'Request failed'
+  if (typeof data === 'string') return data
+  if (data.detail || data.message || data.error) {
+    const single = data.detail || data.message || data.error
+    return typeof single === 'string' ? single : JSON.stringify(single)
+  }
+  const parts = []
+  for (const [field, value] of Object.entries(data)) {
+    const text = Array.isArray(value) ? value.join(' ') : String(value)
+    const label = field === 'non_field_errors' ? '' : `${field.replace(/_/g, ' ')}: `
+    parts.push(`${label}${text}`)
+  }
+  return parts.join(' ') || 'Request failed'
+}
+
 async function responseData(response) {
   let data = null
   const contentType = response.headers.get('content-type')
@@ -81,8 +97,7 @@ async function responseData(response) {
   }
 
   if (!response.ok) {
-    const errorMsg = data?.detail || data?.message || data?.error || 'Request failed'
-    throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg))
+    throw new Error(readableError(data))
   }
 
   return data
