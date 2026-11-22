@@ -1,7 +1,7 @@
 // Simple API helper using standard fetch.
 // Automatically adds JWT access token from localStorage to headers.
 
-const API_BASE = '/api'
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '')
 let refreshPromise = null
 
 export function getToken() {
