@@ -21,7 +21,7 @@ from apps.events.serializers import (
     JoinEventSerializer,
 )
 from apps.photos.models import Photo, PhotoComment
-
+from apps.photos import storage
 
 def get_event_or_none(pk):
     """Retrieve an event by string ID or ObjectId."""
@@ -32,14 +32,8 @@ def get_event_or_none(pk):
     except Exception:
         return None
 
-
 def delete_media_file(relative_path):
-    if not relative_path:
-        return
-    try:
-        os.remove(os.path.join(settings.MEDIA_ROOT, relative_path))
-    except FileNotFoundError:
-        pass
+    storage.delete_file(relative_path)
 
 
 # List and create view: Lists events where the logged-in user is a member, or creates a new event.
@@ -99,7 +93,7 @@ class EventListCreateView(APIView):
         summaries = {
             str(summary["_id"]): {
                 "photo_count": summary["photo_count"],
-                "cover_photo_url": f"{settings.MEDIA_URL}{summary['cover_path']}",
+                "cover_photo_url": storage.public_url(summary["cover_path"]),
             }
             for summary in photo_summaries
         }

@@ -1,15 +1,14 @@
 # Photo and Like models storing photo metadata and user likes.
-# Files are stored locally in the media/ folder and records are stored in MongoDB.
+# Files are stored on Cloudinary (or locally in development); records live in MongoDB.
 
-import os
 from datetime import datetime
 import mongoengine as me
-from django.conf import settings
 from apps.accounts.models import User
 from apps.events.models import Event
+from apps.photos import storage
 
 
-# Photo model: Stores uploaded picture metadata and paths to local files.
+# Photo model: Stores uploaded picture metadata and where the files are.
 class Photo(me.Document):
     event = me.ReferenceField(Event, required=True, reverse_delete_rule=me.CASCADE)
     uploader = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
@@ -58,32 +57,28 @@ class Photo(me.Document):
 
     @property
     def original_url(self):
-        # Public URL path to the untouched original image
-        return f"{settings.MEDIA_URL}{self.original_file}"
+        return storage.public_url(self.original_file)
 
     @property
     def thumbnail_url(self):
-        # Public URL path to the small preview image
-        return f"{settings.MEDIA_URL}{self.thumbnail}"
+        return storage.public_url(self.thumbnail)
 
     @property
     def medium_preview_url(self):
-        # Public URL path to the medium preview image
-        return f"{settings.MEDIA_URL}{self.medium_preview}"
+        return storage.public_url(self.medium_preview)
 
     def delete(self, *args, **kwargs):
         # Clean up likes associated with this photo
         Like.objects(photo=self).delete()
 
-        # Clean up local image files on disk when deleting this photo record
-        for rel_path in (self.original_file, self.thumbnail, self.medium_preview, self.voice_note):
-            if rel_path:
-                full_path = os.path.join(settings.MEDIA_ROOT, rel_path)
-                if os.path.exists(full_path):
-                    try:
-                        os.remove(full_path)
-                    except OSError:
-                        pass
+        # Remove the stored files (Cloudinary or local)
+        for stored in (
+            self.original_file,
+            self.thumbnail,
+            self.medium_preview,
+            self.voice_note,
+        ):
+            storage.delete_file(stored)
         return super().delete(*args, **kwargs)
 
     def __str__(self):
