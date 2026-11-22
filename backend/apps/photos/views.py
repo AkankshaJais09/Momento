@@ -21,7 +21,7 @@ from apps.events.models import Event, Membership
 from apps.photos.models import Photo, Like, PhotoComment
 from apps.photos.serializers import PhotoCommentSerializer, PhotoSerializer, photo_serializer_context
 from apps.photos.services import process_and_save_photo, save_voice_note, validate_photo_file
-
+from apps.photos import storage
 
 def get_event_or_none(pk):
     """Find an event by its ID string or ObjectId."""
@@ -363,15 +363,17 @@ class PhotoDownloadView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        full_path = os.path.join(settings.MEDIA_ROOT, photo.original_file)
-        if not os.path.exists(full_path):
+        data = storage.read_bytes(photo.original_file)
+        if data is None:
             return Response(
                 {"detail": "File not found on server."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         filename = f"momento-{photo.event.id}-{photo.id}.jpg"
-        return FileResponse(open(full_path, "rb"), as_attachment=True, filename=filename)
+        response = HttpResponse(data, content_type="image/jpeg")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 class PhotoCommentsView(APIView):
@@ -485,8 +487,8 @@ class EventPhotosZipDownloadView(APIView):
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             used_names = set()
             for photo in photos:
-                full_path = os.path.join(settings.MEDIA_ROOT, photo.original_file)
-                if os.path.exists(full_path):
+                data = storage.read_bytes(photo.original_file)
+                if data:
                     base_name = f"momento-{event.id}-{photo.id}.jpg"
                     # Avoid duplicate file names inside zip archive
                     name = base_name
@@ -496,7 +498,7 @@ class EventPhotosZipDownloadView(APIView):
                         name = f"{stem}_{counter}{ext}"
                         counter += 1
                     used_names.add(name)
-                    zip_file.write(full_path, arcname=name)
+                    zip_file.writestr(name, data)
 
         zip_buffer.seek(0)
         safe_name = "".join(c for c in event.name if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")

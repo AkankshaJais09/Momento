@@ -66,6 +66,19 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+# Cloudinary (permanent media storage). Leave the variables empty to use local files.
+CLOUDINARY_CLOUD_NAME = config("CLOUDINARY_CLOUD_NAME", default="")
+CLOUDINARY_API_KEY = config("CLOUDINARY_API_KEY", default="")
+CLOUDINARY_API_SECRET = config("CLOUDINARY_API_SECRET", default="")
+if CLOUDINARY_CLOUD_NAME:
+    import cloudinary
+
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 # Photo upload constraints
 MAX_PHOTO_SIZE_BYTES = 25 * 1024 * 1024
