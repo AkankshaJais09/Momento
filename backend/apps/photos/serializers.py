@@ -2,7 +2,7 @@
 # Includes public image URLs, like counts, and whether current user liked the photo.
 
 from rest_framework import serializers
-from django.conf import settings
+from apps.photos import storage
 from apps.photos.models import Photo, Like, PhotoComment
 
 
@@ -93,7 +93,7 @@ class PhotoSerializer(serializers.Serializer):
         }
 
     def get_voice_note_url(self, obj):
-        return f"{settings.MEDIA_URL}{obj.voice_note}" if obj.voice_note else None
+        return storage.public_url(obj.voice_note) if obj.voice_note else None
 
     def get_comment_count(self, obj):
         counts = self.context.get("comment_counts")
@@ -128,7 +128,7 @@ class PhotoCommentSerializer(serializers.Serializer):
     user = serializers.SerializerMethodField()
 
     def get_voice_url(self, obj):
-        return f"{settings.MEDIA_URL}{obj.voice_file}" if obj.voice_file else None
+        return storage.public_url(obj.voice_file) if obj.voice_file else None
 
     def get_user(self, obj):
         user = {
@@ -136,4 +136,5 @@ class PhotoCommentSerializer(serializers.Serializer):
         }
         if can_view_user_email(self.context.get("request"), obj.user, obj.photo.event):
             user["email"] = obj.user.email
+
         return user
