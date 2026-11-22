@@ -19,8 +19,14 @@ def is_remote(value):
 
 def public_url(value):
     """URL the browser can open for a stored value."""
-    if is_remote(value):
-        return value
+    if not value:
+        return ""
+    value = str(value)
+    # If a full web link is inside the value, return just that link.
+    for marker in ("https://", "http://"):
+        position = value.find(marker)
+        if position != -1:
+            return value[position:]
     return f"{settings.MEDIA_URL}{value}"
 
 
