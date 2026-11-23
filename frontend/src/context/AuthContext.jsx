@@ -2,13 +2,30 @@
 // Uses plain React useState and useEffect with localStorage tokens.
 
 import { createContext, useContext, useState, useEffect } from 'react'
-import { request, setToken, setRefreshToken, getToken } from '../api'
+import {
+  request,
+  setToken,
+  setRefreshToken,
+  getToken,
+  SESSION_EXPIRED_EVENT,
+} from '../api'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [sessionExpired, setSessionExpired] = useState(false)
+
+  // api.js announces this when the login can no longer be renewed
+  useEffect(() => {
+    function handleExpired() {
+      setUser(null)
+      setSessionExpired(true)
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired)
+  }, [])
 
   // On initial page load, verify existing token and load user profile
   useEffect(() => {
@@ -43,6 +60,7 @@ export function AuthProvider({ children }) {
     setToken(data.access)
     setRefreshToken(data.refresh)
     setUser(data.user)
+    setSessionExpired(false)
     return data.user
   }
 
@@ -59,6 +77,7 @@ export function AuthProvider({ children }) {
     setToken(data.access)
     setRefreshToken(data.refresh)
     setUser(data.user)
+    setSessionExpired(false)
     return data.user
   }
 
@@ -66,10 +85,25 @@ export function AuthProvider({ children }) {
   function logout() {
     setToken(null)
     setUser(null)
+    setSessionExpired(false)
+  }
+
+  function dismissSessionExpired() {
+    setSessionExpired(false)
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        sessionExpired,
+        dismissSessionExpired,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

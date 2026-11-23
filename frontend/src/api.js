@@ -4,6 +4,8 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '')
 let refreshPromise = null
 
+export const SESSION_EXPIRED_EVENT = 'momento:session-expired'
+
 export function getToken() {
   return localStorage.getItem('access_token')
 }
@@ -27,6 +29,11 @@ export function setRefreshToken(token) {
   } else {
     localStorage.removeItem('refresh_token')
   }
+}
+
+function notifySessionExpired() {
+  setToken(null)
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
 }
 
 function fetchRequest(path, options, token) {
@@ -57,7 +64,7 @@ async function refreshAccessToken() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh }),
       })
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.access) {
         setToken(null)
         return null
@@ -73,6 +80,7 @@ async function refreshAccessToken() {
   return refreshPromise
 }
 
+// Turns the server's error reply into a plain sentence without field names.
 function readableError(data) {
   if (!data) return 'Request failed'
   if (typeof data === 'string') return data
@@ -81,10 +89,8 @@ function readableError(data) {
     return typeof single === 'string' ? single : JSON.stringify(single)
   }
   const parts = []
-  for (const [field, value] of Object.entries(data)) {
-    const text = Array.isArray(value) ? value.join(' ') : String(value)
-    const label = field === 'non_field_errors' ? '' : `${field.replace(/_/g, ' ')}: `
-    parts.push(`${label}${text}`)
+  for (const value of Object.values(data)) {
+    parts.push(Array.isArray(value) ? value.join(' ') : String(value))
   }
   return parts.join(' ') || 'Request failed'
 }
@@ -104,6 +110,7 @@ async function responseData(response) {
 }
 
 export async function request(path, options = {}) {
+  const hadToken = Boolean(getToken())
   let response = await fetchRequest(path, options, getToken())
   const isAuthRequest = path.startsWith('/auth/login')
     || path.startsWith('/auth/register')
@@ -111,7 +118,11 @@ export async function request(path, options = {}) {
 
   if (response.status === 401 && !isAuthRequest) {
     const access = await refreshAccessToken()
-    if (access) response = await fetchRequest(path, options, access)
+    if (access) {
+      response = await fetchRequest(path, options, access)
+    } else if (hadToken) {
+      notifySessionExpired()
+    }
   }
   return responseData(response)
 }

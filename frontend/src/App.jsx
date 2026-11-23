@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { AuthProvider, useAuth } from './context/AuthContext'
 import PageHeader from './components/PageHeader'
 import MomentoShell from './components/MomentoShell'
+import SessionBar from './components/SessionBar'
 
 const Home = lazy(() => import('./pages/Home'))
 const CreateEvent = lazy(() => import('./pages/CreateEvent'))
@@ -58,6 +59,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <SessionBar />
         <Suspense fallback={<MomentoShell><main className="momento-scroll"><p role="status" className="subtext">Loading page…</p></main></MomentoShell>}>
           <Routes>
             <Route path="/" element={<Home />} />
