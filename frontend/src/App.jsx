@@ -67,6 +67,7 @@ export default function App() {
             <Route path="/register" element={<AuthPage mode="register" />} />
             <Route path="/id" element={<RequireAuth><MomentoId /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+            <Route path="/events" element={<RequireAuth><Dashboard /></RequireAuth>} />
             <Route path="/join" element={<RequireAuth><JoinEvent /></RequireAuth>} />
             <Route path="/create" element={<RequireAuth><CreateEvent /></RequireAuth>} />
             <Route path="/events/:eventId/share" element={<RequireAuth><ShareEvent /></RequireAuth>} />

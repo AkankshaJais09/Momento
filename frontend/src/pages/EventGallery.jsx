@@ -115,6 +115,14 @@ export default function EventGallery() {
           ) : null}
         />
 
+        <Link
+          to="/dashboard"
+          className="btn btn-text"
+          style={{ display: 'inline-flex', marginTop: -12, marginBottom: 16 }}
+        >
+          Your Momentos
+        </Link>
+
         <p className="subtext" style={{ marginBottom: 16 }}>
           {count} photos so far
         </p>
