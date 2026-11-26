@@ -96,17 +96,22 @@ def process_and_save_photo(
         original_bytes, f"photos/{event.id}/original/{filename}"
     )
 
-    medium = preview_img.copy()
-    medium.thumbnail((800, 800), Image.Resampling.LANCZOS)
-    medium_path = storage.save_bytes(
-        _jpeg_bytes(medium, 85), f"photos/{event.id}/medium/{filename}"
-    )
+    if storage.cloudinary_enabled():
+        # Cloudinary creates cached, resized previews from the single original upload.
+        medium_path = storage.transformed_url(orig_path, 800, 800)
+        thumb_path = storage.transformed_url(orig_path, 400, 400)
+    else:
+        medium = preview_img.copy()
+        medium.thumbnail((800, 800), Image.Resampling.LANCZOS)
+        medium_path = storage.save_bytes(
+            _jpeg_bytes(medium, 85), f"photos/{event.id}/medium/{filename}"
+        )
 
-    thumb = preview_img.copy()
-    thumb.thumbnail((400, 400), Image.Resampling.LANCZOS)
-    thumb_path = storage.save_bytes(
-        _jpeg_bytes(thumb, 85), f"photos/{event.id}/thumbnail/{filename}"
-    )
+        thumb = preview_img.copy()
+        thumb.thumbnail((400, 400), Image.Resampling.LANCZOS)
+        thumb_path = storage.save_bytes(
+            _jpeg_bytes(thumb, 85), f"photos/{event.id}/thumbnail/{filename}"
+        )
 
     photo = Photo(
         event=event,

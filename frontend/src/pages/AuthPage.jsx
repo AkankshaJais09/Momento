@@ -10,7 +10,9 @@ export default function AuthPage({ mode }) {
   const { user, loading, login, register } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [role, setRole] = useState(location.state?.role || 'host')
+  const inviteDestination = location.state?.from
+  const joiningEvent = inviteDestination?.pathname === '/join'
+  const [role, setRole] = useState(joiningEvent ? 'guest' : (location.state?.role || 'host'))
   const [email, setEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
@@ -43,6 +45,14 @@ export default function AuthPage({ mode }) {
       } else {
         await login(email, password)
       }
+      if (joiningEvent) {
+        navigate({
+          pathname: inviteDestination.pathname,
+          search: inviteDestination.search,
+          hash: inviteDestination.hash,
+        }, { replace: true })
+        return
+      }
       navigate('/id', {
         replace: true,
         state: { from: location.state?.from, role },
@@ -63,23 +73,25 @@ export default function AuthPage({ mode }) {
         />
         <p className="subtext" style={{ marginBottom: 28 }}>
           {isRegister
-            ? 'Create an account to start your photo wall.'
-            : 'Sign in to create or join a photo wall.'}
+            ? (joiningEvent ? 'Create an account to join this photo wall.' : 'Create an account to start your photo wall.')
+            : (joiningEvent ? 'Sign in to join this photo wall.' : 'Sign in to create or join a photo wall.')}
         </p>
 
-        <div className="chip-row" role="group" aria-label="Choose account type" style={{ marginBottom: 24 }}>
-          {['guest', 'host'].map((value) => (
-            <button
-              key={value}
-              type="button"
-              className="chip"
-              aria-pressed={role === value}
-              onClick={() => setRole(value)}
-            >
-              {value === 'guest' ? 'Guest' : 'Host'}
-            </button>
-          ))}
-        </div>
+        {!joiningEvent ? (
+          <div className="chip-row" role="group" aria-label="Choose account type" style={{ marginBottom: 24 }}>
+            {['guest', 'host'].map((value) => (
+              <button
+                key={value}
+                type="button"
+                className="chip"
+                aria-pressed={role === value}
+                onClick={() => setRole(value)}
+              >
+                {value === 'guest' ? 'Guest' : 'Host'}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <form id="auth-form" onSubmit={handleSubmit}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

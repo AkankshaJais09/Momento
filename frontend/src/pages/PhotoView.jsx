@@ -118,7 +118,12 @@ export default function PhotoView() {
         {photo ? (
           <>
             <article className="polaroid polaroid--tilt-1" style={{ margin: '0 auto 20px', maxWidth: 330 }}>
-              <img className="polaroid__image" src={photo.original_url || photo.medium_preview_url} alt={photo.caption || 'Shared moment'} />
+              <img
+                className="polaroid__image"
+                src={photo.medium_preview_url || photo.original_url}
+                alt={photo.caption || 'Shared moment'}
+                decoding="async"
+              />
               <p className="caption-hand" style={{ margin: 0 }}>
                 {photo.caption || 'A moment'} – {photo.uploader?.display_name}
               </p>

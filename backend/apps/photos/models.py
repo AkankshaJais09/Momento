@@ -61,23 +61,30 @@ class Photo(me.Document):
 
     @property
     def thumbnail_url(self):
-        return storage.public_url(self.thumbnail)
+        return storage.public_url(storage.transformed_url(self.thumbnail, 400, 400))
 
     @property
     def medium_preview_url(self):
-        return storage.public_url(self.medium_preview)
+        return storage.public_url(
+            storage.transformed_url(self.medium_preview, 800, 800)
+        )
 
     def delete(self, *args, **kwargs):
         # Clean up likes associated with this photo
         Like.objects(photo=self).delete()
 
         # Remove the stored files (Cloudinary or local)
+        deleted_assets = set()
         for stored in (
             self.original_file,
             self.thumbnail,
             self.medium_preview,
             self.voice_note,
         ):
+            key = storage.asset_key(stored)
+            if key in deleted_assets:
+                continue
+            deleted_assets.add(key)
             storage.delete_file(stored)
         return super().delete(*args, **kwargs)
 

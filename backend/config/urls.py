@@ -1,6 +1,7 @@
 from django.conf import settings
-from django.conf.urls.static import static
-from django.urls import path, include
+from django.urls import path, include, re_path
+from django.views.decorators.cache import cache_control
+from django.views.static import serve
 
 urlpatterns = [
     path("api/auth/", include("apps.accounts.urls")),
@@ -9,4 +10,11 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    media_path = settings.MEDIA_URL.lstrip("/")
+    urlpatterns += [
+        re_path(
+            rf"^{media_path}(?P<path>.*)$",
+            cache_control(max_age=86400)(serve),
+            {"document_root": settings.MEDIA_ROOT},
+        )
+    ]

@@ -30,6 +30,39 @@ def public_url(value):
     return f"{settings.MEDIA_URL}{value}"
 
 
+def transformed_url(value, width, height):
+    """Build a small Cloudinary preview from the uploaded original."""
+    if not cloudinary_enabled() or not is_remote(value):
+        return value
+    marker = "/upload/"
+    if marker not in value:
+        return value
+    remainder = value.split(marker, 1)[1]
+    if remainder.startswith("f_auto,"):
+        return value
+    transform = f"f_auto,q_auto,c_limit,w_{width},h_{height}"
+    return value.replace(marker, f"{marker}{transform}/", 1)
+
+
+def asset_key(value):
+    """Identify the Cloudinary file behind original and transformed URLs."""
+    if not is_remote(value):
+        return value
+    match = re.search(r"/(image|video|raw)/upload/(.*)$", str(value))
+    if not match:
+        return value
+    resource_type, remainder = match.groups()
+    parts = remainder.split("/")
+    version_index = next(
+        (index for index, part in enumerate(parts) if re.fullmatch(r"v\d+", part)),
+        None,
+    )
+    if version_index is not None:
+        remainder = "/".join(parts[version_index + 1 :])
+    remainder = re.sub(r"\.[A-Za-z0-9]+$", "", remainder)
+    return f"{resource_type}/{remainder}"
+
+
 def save_bytes(data, rel_path, resource_type="image"):
     """Save file bytes. Returns a Cloudinary URL or a local relative path."""
     if cloudinary_enabled():
@@ -73,16 +106,13 @@ def delete_file(value):
     if not value:
         return
     if is_remote(value):
-        match = re.search(
-            r"/(image|video|raw)/upload/(?:v\d+/)?(.+?)(?:\.[A-Za-z0-9]+)?$", value
-        )
-        if match and cloudinary_enabled():
+        key = asset_key(value)
+        if key and cloudinary_enabled() and key != value:
             try:
                 import cloudinary.uploader
 
-                cloudinary.uploader.destroy(
-                    match.group(2), resource_type=match.group(1)
-                )
+                resource_type, public_id = key.split("/", 1)
+                cloudinary.uploader.destroy(public_id, resource_type=resource_type)
             except Exception:
                 pass
         return

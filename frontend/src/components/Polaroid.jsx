@@ -36,7 +36,7 @@ export default function Polaroid({
       }}
     >
       {src ? (
-        <img className="polaroid__image" src={src} alt={alt} loading={loading} />
+        <img className="polaroid__image" src={src} alt={alt} loading={loading} decoding="async" />
       ) : (
         <span
           className="polaroid__placeholder"
